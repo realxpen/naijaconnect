@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Smartphone, 
@@ -47,7 +46,8 @@ import {
   EyeOff,
   ArrowUpRight,
   ArrowDownLeft,
-  Wallet
+  Wallet,
+  Lightbulb
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -126,6 +126,15 @@ const App: React.FC = () => {
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [userInput, setUserInput] = useState('');
   const [isAiLoading, setIsAiLoading] = useState(false);
+
+  // Quick Tips for AI
+  const quickTips = [
+    "What data plans are best for me?",
+    "How to check my balance?",
+    "Show me MTN monthly plans",
+    "I have 500 Naira, what can I buy?",
+    "Which network has the cheapest 10GB?"
+  ];
 
   // Theme Application Logic
   useEffect(() => {
@@ -310,15 +319,23 @@ const App: React.FC = () => {
     }
   };
 
-  const handleAiMessage = async () => {
-    if (!userInput.trim()) return;
-    const newMessage: ChatMessage = { role: 'user', text: userInput };
-    setChatHistory([...chatHistory, newMessage]);
+  const handleAiMessage = async (overrideInput?: string) => {
+    const textToSend = overrideInput || userInput;
+    if (!textToSend.trim()) return;
+
+    const newMessage: ChatMessage = { role: 'user', text: textToSend };
+    setChatHistory(prev => [...prev, newMessage]);
     setUserInput('');
     setIsAiLoading(true);
-    const response = await getGeminiRecommendation(userInput);
-    setChatHistory(prev => [...prev, { role: 'model', text: response }]);
-    setIsAiLoading(false);
+
+    try {
+      const response = await getGeminiRecommendation(textToSend);
+      setChatHistory(prev => [...prev, { role: 'model', text: response }]);
+    } catch (err) {
+      setChatHistory(prev => [...prev, { role: 'model', text: "Oshey! I had a network glitch. Try again!" }]);
+    } finally {
+      setIsAiLoading(false);
+    }
   };
 
   const handleAiPlanSearch = async () => {
@@ -1020,22 +1037,38 @@ const App: React.FC = () => {
               )}
             </div>
 
-            <div className="mt-4 flex gap-3">
-              <input
-                type="text"
-                placeholder="Ask NaijaConnect AI..."
-                value={userInput}
-                onChange={(e) => setUserInput(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && handleAiMessage()}
-                className="flex-1 px-5 py-4 bg-white dark:bg-slate-950 border-2 border-slate-100 dark:border-slate-800 rounded-2xl outline-none focus:ring-2 focus:ring-emerald-500 shadow-lg text-slate-900 dark:text-white placeholder:text-slate-400 font-bold"
-              />
-              <button
-                onClick={handleAiMessage}
-                disabled={isAiLoading || !userInput.trim()}
-                className="bg-emerald-600 text-white p-4 rounded-2xl hover:bg-emerald-700 transition-all shadow-xl shadow-emerald-100 dark:shadow-none active:scale-90"
-              >
-                <ArrowRight size={24} />
-              </button>
+            <div className="mt-4 space-y-3">
+              {/* Quick Tips Buttons */}
+              <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
+                {quickTips.map((tip, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => handleAiMessage(tip)}
+                    className="flex-shrink-0 px-4 py-2 bg-emerald-50 dark:bg-slate-800 border-2 border-emerald-100 dark:border-slate-700 rounded-2xl text-[10px] font-black text-emerald-700 dark:text-emerald-400 hover:border-emerald-400 transition-all shadow-sm flex items-center gap-2 whitespace-nowrap active:scale-95"
+                  >
+                    <Lightbulb size={12} className="text-emerald-500" />
+                    {tip}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex gap-3">
+                <input
+                  type="text"
+                  placeholder="Ask NaijaConnect AI..."
+                  value={userInput}
+                  onChange={(e) => setUserInput(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && handleAiMessage()}
+                  className="flex-1 px-5 py-4 bg-white dark:bg-slate-950 border-2 border-slate-100 dark:border-slate-800 rounded-2xl outline-none focus:ring-2 focus:ring-emerald-500 shadow-lg text-slate-900 dark:text-white placeholder:text-slate-400 font-bold"
+                />
+                <button
+                  onClick={() => handleAiMessage()}
+                  disabled={isAiLoading || !userInput.trim()}
+                  className="bg-emerald-600 text-white p-4 rounded-2xl hover:bg-emerald-700 transition-all shadow-xl shadow-emerald-100 dark:shadow-none active:scale-90"
+                >
+                  <ArrowRight size={24} />
+                </button>
+              </div>
             </div>
           </div>
         )}

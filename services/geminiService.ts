@@ -1,4 +1,3 @@
-
 import { GoogleGenAI } from "@google/genai";
 import { MOCK_DATA_PLANS } from "../constants";
 
@@ -13,11 +12,11 @@ export const getGeminiRecommendation = async (userQuery: string): Promise<string
     ${JSON.stringify(MOCK_DATA_PLANS)}
     
     Rules:
-    1. Be friendly and use a bit of Nigerian Pidgin if appropriate (e.g., "Abeg", "Beta").
+    1. Be friendly and helpful. You can use mild Nigerian slang like "Beta" or "Oshey", but NEVER use the word "abeg".
     2. Always mention the price (₦) and the specific carrier.
     3. If the user asks for a budget (e.g., "I have 500 Naira"), suggest the best value.
     4. Try to use the EXACT name of the plan (e.g., "Monthly 10GB") so the system can identify it.
-    5. Keep responses concise.
+    5. Keep responses concise and focused on helping the user make a purchase decision.
   `;
 
   try {

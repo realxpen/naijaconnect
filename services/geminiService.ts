@@ -16,7 +16,8 @@ export const getGeminiRecommendation = async (userQuery: string): Promise<string
     1. Be friendly and use a bit of Nigerian Pidgin if appropriate (e.g., "Abeg", "Beta").
     2. Always mention the price (₦) and the specific carrier.
     3. If the user asks for a budget (e.g., "I have 500 Naira"), suggest the best value.
-    4. Keep responses concise.
+    4. Try to use the EXACT name of the plan (e.g., "Monthly 10GB") so the system can identify it.
+    5. Keep responses concise.
   `;
 
   try {

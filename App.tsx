@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Smartphone, 
@@ -40,7 +41,8 @@ import {
   Plus,
   ZapOff,
   Building2,
-  PhoneCall
+  PhoneCall,
+  ShoppingBag
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -305,6 +307,31 @@ const App: React.FC = () => {
     }
   };
 
+  const detectedPlanFromAi = useMemo(() => {
+    if (!aiPlanRecommendation) return null;
+    
+    // Scan all carriers and their plans to see if any plan name is mentioned in the recommendation
+    for (const carrier of Object.values(Carrier)) {
+      const plans = MOCK_DATA_PLANS[carrier];
+      for (const plan of plans) {
+        if (aiPlanRecommendation.toLowerCase().includes(plan.name.toLowerCase())) {
+          return { plan, carrier };
+        }
+      }
+    }
+    return null;
+  }, [aiPlanRecommendation]);
+
+  const buyAiRecommendedPlan = () => {
+    if (detectedPlanFromAi) {
+      setSelectedCarrier(detectedPlanFromAi.carrier);
+      setProductType('Data');
+      setSelectedPlan(detectedPlanFromAi.plan);
+      setIsConfirmingPlan(true);
+      setIsRecurringChecked(false);
+    }
+  };
+
   const filteredTransactions = useMemo(() => {
     return transactions.filter(tx => {
       if (historyTypeFilter !== 'All' && tx.type !== historyTypeFilter) return false;
@@ -562,9 +589,20 @@ const App: React.FC = () => {
                   >
                     <X size={14} />
                   </button>
-                  <p className="text-sm text-slate-700 dark:text-slate-200 leading-relaxed italic font-medium">
-                    "{aiPlanRecommendation}"
-                  </p>
+                  <div className="space-y-3">
+                    <p className="text-sm text-slate-700 dark:text-slate-200 leading-relaxed italic font-medium">
+                      "{aiPlanRecommendation}"
+                    </p>
+                    {detectedPlanFromAi && (
+                      <button
+                        onClick={buyAiRecommendedPlan}
+                        className="w-full py-2.5 bg-emerald-600 text-white rounded-xl font-black text-xs uppercase flex items-center justify-center gap-2 hover:bg-emerald-700 transition-all shadow-md active:scale-95"
+                      >
+                        <ShoppingBag size={14} />
+                        Buy This Plan ({detectedPlanFromAi.plan.name})
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
             </section>

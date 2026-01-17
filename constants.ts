@@ -69,7 +69,14 @@ export const TRANSLATIONS: Record<Language, Record<string, string>> = {
     suggested: 'Suggested Plans',
     available: 'Available',
     recent_num: 'Quick Add History',
-    use_mine: 'Use Mine'
+    use_mine: 'Use Mine',
+    auto_renew: 'Auto-renew',
+    recurring_confirm: 'Confirm recurring setup?',
+    frequency: 'Frequency',
+    active_recurring: 'Active Recurring Plans',
+    cancel_confirm: 'Are you sure you want to cancel this plan?',
+    keep_plan: 'Keep Plan',
+    cancel_plan: 'Cancel Plan'
   },
   yo: {
     welcome: 'E kaabo pada!',
@@ -99,7 +106,14 @@ export const TRANSLATIONS: Record<Language, Record<string, string>> = {
     suggested: 'Àwọn ètò tá a dámọ̀ràn',
     available: 'Wà lárọ̀ọ́wọ́tó',
     recent_num: 'Awọn nọmba to kẹhin',
-    use_mine: 'Lo temi'
+    use_mine: 'Lo temi',
+    auto_renew: 'Tuntun laifọwọyi',
+    recurring_confirm: 'Jẹrisi eto yii?',
+    frequency: 'Iye igba',
+    active_recurring: 'Awọn eto ti n ṣiṣẹ',
+    cancel_confirm: 'Ṣe o daju pe o fẹ fagilee eto yii?',
+    keep_plan: 'Duro eto naa',
+    cancel_plan: 'Fagilee eto'
   },
   ig: {
     welcome: 'Nnọọ ọzọ!',
@@ -129,7 +143,14 @@ export const TRANSLATIONS: Record<Language, Record<string, string>> = {
     suggested: 'Atụmatụ anyị tụrụ aro',
     available: 'Ọ nọ ebe a',
     recent_num: 'Nọmba ndị mbụ',
-    use_mine: 'Nke m'
+    use_mine: 'Nke m',
+    auto_renew: 'Tinye ego ọzọ',
+    recurring_confirm: 'Ị kwadoro nke a?',
+    frequency: 'Ugboro ole',
+    active_recurring: 'Atụmatụ na-arụ ọrụ',
+    cancel_confirm: 'Ị doro anya na ị chọrọ ịkagbu atụmatụ a?',
+    keep_plan: 'Debe atụmatụ',
+    cancel_plan: 'Kagbuo atụmatụ'
   },
   ha: {
     welcome: 'Barka da dawowa!',
@@ -159,7 +180,14 @@ export const TRANSLATIONS: Record<Language, Record<string, string>> = {
     suggested: 'Tsare-tsaren da aka ba da shawara',
     available: 'Akwai',
     recent_num: 'Lambobin kwanan nan',
-    use_mine: 'Nawa'
+    use_mine: 'Nawa',
+    auto_renew: 'Sake sabuntawa',
+    recurring_confirm: 'Tabbatar da wannan tsari?',
+    frequency: 'Yawan lokaci',
+    active_recurring: 'Tsare-tsaren dake aiki',
+    cancel_confirm: 'Shin kun tabbata kuna son soke wannan tsarin?',
+    keep_plan: 'Ci gaba da tsarin',
+    cancel_plan: 'Soke tsarin'
   },
   fr: {
     welcome: 'Bon retour !',
@@ -189,6 +217,13 @@ export const TRANSLATIONS: Record<Language, Record<string, string>> = {
     suggested: 'Plans suggérés',
     available: 'Disponible',
     recent_num: 'Historique rapide',
-    use_mine: 'Utiliser le mien'
+    use_mine: 'Utiliser le mien',
+    auto_renew: 'Auto-renouveler',
+    recurring_confirm: 'Confirmer l\'abonnement?',
+    frequency: 'Fréquence',
+    active_recurring: 'Abonnements actifs',
+    cancel_confirm: 'Êtes-vous sûr de vouloir annuler ce plan?',
+    keep_plan: 'Garder le plan',
+    cancel_plan: 'Annuler le plan'
   }
 };

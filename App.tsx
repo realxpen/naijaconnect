@@ -51,7 +51,8 @@ import {
   Lightbulb,
   Banknote,
   ChevronRight,
-  Languages as LangIcon
+  Languages as LangIcon,
+  RotateCcw
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -124,6 +125,7 @@ const App: React.FC = () => {
   const [isRecurringChecked, setIsRecurringChecked] = useState(false);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod>('Wallet');
   const [showLangMenu, setShowLangMenu] = useState(false);
+  const [planToCancel, setPlanToCancel] = useState<RecurringPlan | null>(null);
 
   // Buy Tab AI Assistant State
   const [aiPlanQuery, setAiPlanQuery] = useState('');
@@ -247,6 +249,23 @@ const App: React.FC = () => {
       if (selectedPaymentMethod === 'Wallet') {
         setWalletBalance(prev => prev - cost);
       }
+      
+      if (isRecurringChecked && selectedPlan) {
+        const nextDate = new Date();
+        nextDate.setDate(nextDate.getDate() + (selectedPlan.category === 'Daily' ? 1 : selectedPlan.category === 'Weekly' ? 7 : 30));
+        const newRecurring: RecurringPlan = {
+          id: 'rec_' + Math.random().toString(36).substr(2, 7),
+          planId: selectedPlan.id,
+          planName: selectedPlan.name,
+          phoneNumber,
+          carrier: selectedCarrier,
+          price: selectedPlan.price,
+          nextRenewal: nextDate.toLocaleDateString(),
+          frequency: selectedPlan.category
+        };
+        setRecurringPlans(prev => [newRecurring, ...prev]);
+      }
+
       const newTx: Transaction = {
         id: 'tx_' + Math.random().toString(36).substr(2, 7),
         date: new Date().toLocaleString(),
@@ -331,13 +350,6 @@ const App: React.FC = () => {
     });
   }, [transactions, historyTypeFilter, searchQuery]);
 
-  const chartData = useMemo(() => {
-    return filteredTransactions.slice(0, 10).map(t => ({
-      name: t.date.split(' ')[0],
-      amount: t.amount
-    })).reverse();
-  }, [filteredTransactions]);
-
   const filteredPlans = MOCK_DATA_PLANS[selectedCarrier].filter(
     plan => plan.category === selectedCategory
   );
@@ -345,7 +357,6 @@ const App: React.FC = () => {
   const openPlanConfirmation = (plan: DataPlan) => {
     setSelectedPlan(plan);
     setIsConfirmingPlan(true);
-    setIsRecurringChecked(false);
     setSelectedPaymentMethod('Wallet');
   };
 
@@ -366,18 +377,23 @@ const App: React.FC = () => {
     }, 1500);
   };
 
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    setActiveTab('buy');
+    setAuthView('login');
+  };
+
   const resetForm = () => {
     setShowSuccess(false);
     setAmount('');
     setSelectedPlan(null);
+    setIsRecurringChecked(false);
   };
 
-  // Fixed missing useDefaultPhone function to use the default stored number
   const useDefaultPhone = () => {
     handlePhoneChange(defaultPhone);
   };
 
-  // Fixed missing handleDepositSubmit function for wallet updates
   const handleDepositSubmit = () => {
     const val = Number(depositAmount);
     if (val > 0) {
@@ -389,7 +405,6 @@ const App: React.FC = () => {
     }
   };
 
-  // Fixed missing handleWithdrawSubmit function for wallet updates
   const handleWithdrawSubmit = () => {
     const val = Number(withdrawAmount);
     if (val > 0 && val <= walletBalance) {
@@ -398,6 +413,13 @@ const App: React.FC = () => {
       setWithdrawAmount('');
     } else {
       alert(val > walletBalance ? "Insufficient wallet balance." : "Please enter a valid amount to withdraw.");
+    }
+  };
+
+  const confirmCancelRecurring = () => {
+    if (planToCancel) {
+      setRecurringPlans(prev => prev.filter(p => p.id !== planToCancel.id));
+      setPlanToCancel(null);
     }
   };
 
@@ -608,10 +630,23 @@ const App: React.FC = () => {
                 <div className="space-y-4">
                   <div className="space-y-2 max-h-[280px] overflow-y-auto pr-1 custom-scrollbar">
                     {filteredPlans.map(plan => (
-                      <button key={plan.id} onClick={() => openPlanConfirmation(plan)} className={`w-full p-4 flex justify-between items-center rounded-2xl border-2 transition-all group ${selectedPlan?.id === plan.id ? 'border-emerald-600 bg-emerald-50 dark:bg-emerald-950 shadow-md' : 'border-slate-100 dark:border-slate-700 hover:border-emerald-300 dark:hover:border-emerald-800 bg-slate-50/30 dark:bg-slate-900/30'}`}>
-                        <div className="text-left"><p className="font-black text-slate-800 dark:text-slate-100 text-sm">{plan.name}</p><p className="text-[10px] font-bold text-slate-400 uppercase mt-0.5">{plan.validity} • {plan.allowance}</p></div>
-                        <div className="text-right flex items-center gap-3"><p className="font-black text-emerald-700 dark:text-emerald-400">₦{plan.price}</p><ArrowRight size={16} className={`transition-transform ${selectedPlan?.id === plan.id ? 'translate-x-1 text-emerald-600' : 'text-slate-300 group-hover:text-emerald-400'}`} /></div>
-                      </button>
+                      <div key={plan.id} className="flex gap-2 items-center">
+                        <button onClick={() => openPlanConfirmation(plan)} className={`flex-1 p-4 flex justify-between items-center rounded-2xl border-2 transition-all group ${selectedPlan?.id === plan.id ? 'border-emerald-600 bg-emerald-50 dark:bg-emerald-950 shadow-md' : 'border-slate-100 dark:border-slate-700 hover:border-emerald-300 dark:hover:border-emerald-800 bg-slate-50/30 dark:bg-slate-900/30'}`}>
+                          <div className="text-left"><p className="font-black text-slate-800 dark:text-slate-100 text-sm">{plan.name}</p><p className="text-[10px] font-bold text-slate-400 uppercase mt-0.5">{plan.validity} • {plan.allowance}</p></div>
+                          <div className="text-right flex items-center gap-3"><p className="font-black text-emerald-700 dark:text-emerald-400">₦{plan.price}</p><ArrowRight size={16} className={`transition-transform ${selectedPlan?.id === plan.id ? 'translate-x-1 text-emerald-600' : 'text-slate-300 group-hover:text-emerald-400'}`} /></div>
+                        </button>
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedPlan(plan);
+                            setIsRecurringChecked(!isRecurringChecked);
+                          }}
+                          className={`p-4 rounded-2xl border-2 transition-all flex flex-col items-center justify-center gap-1 ${isRecurringChecked && selectedPlan?.id === plan.id ? 'border-emerald-600 bg-emerald-50 dark:bg-emerald-950 text-emerald-600' : 'border-slate-100 dark:border-slate-700 text-slate-400'}`}
+                        >
+                          <RotateCcw size={16} className={isRecurringChecked && selectedPlan?.id === plan.id ? 'animate-spin-slow' : ''} />
+                          <span className="text-[8px] font-black uppercase">{t('auto_renew')}</span>
+                        </button>
+                      </div>
                     ))}
                   </div>
                 </div>
@@ -626,7 +661,7 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {/* History / Assistant / Profile Views with t() wraps */}
+        {/* Activity Tab */}
         {activeTab === 'history' && (
           <div className="space-y-6 animate-in slide-in-from-right duration-500">
              <section className="bg-white dark:bg-slate-800 p-5 rounded-3xl shadow-lg border border-slate-100 dark:border-slate-700">
@@ -646,6 +681,7 @@ const App: React.FC = () => {
           </div>
         )}
 
+        {/* AI Assistant Tab */}
         {activeTab === 'assistant' && (
           <div className="flex flex-col h-[calc(100vh-180px)] animate-in slide-in-from-bottom duration-500">
              <div className="flex-1 overflow-y-auto space-y-4 pr-1 custom-scrollbar pb-4">
@@ -657,7 +693,7 @@ const App: React.FC = () => {
                   <div className={`max-w-[85%] p-4 rounded-3xl text-sm font-bold shadow-sm ${msg.role === 'user' ? 'bg-emerald-600 text-white rounded-tr-none' : 'bg-white dark:bg-slate-800 border-2 border-slate-100 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded-tl-none'}`}>{msg.text}</div>
                 </div>
               ))}
-              {isAiLoading && <div className="flex justify-start"><div className="bg-white dark:bg-slate-800 border-2 border-slate-100 dark:border-slate-700 p-4 rounded-3xl flex items-center gap-2 shadow-sm"><div className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-bounce"></div><div className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-bounce"></div></div></div>}
+              {isAiLoading && <div className="flex justify-start"><div className="bg-white dark:bg-slate-800 border-2 border-slate-100 dark:border-slate-700 p-4 rounded-3xl flex items-center gap-2 shadow-sm"><div className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-bounce"></div><div className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-bounce" style={{animationDelay:'0.2s'}}></div></div></div>}
             </div>
             <div className="mt-4 space-y-3">
               <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
@@ -671,6 +707,7 @@ const App: React.FC = () => {
           </div>
         )}
 
+        {/* Profile Tab */}
         {activeTab === 'profile' && (
           <div className="space-y-6 animate-in slide-in-from-top duration-500 pb-12">
              <section className="bg-white dark:bg-slate-800 p-8 rounded-[40px] shadow-xl border border-slate-100 dark:border-slate-700 flex flex-col items-center text-center relative overflow-hidden">
@@ -679,12 +716,46 @@ const App: React.FC = () => {
                <h2 className="text-2xl font-black text-slate-800 dark:text-white tracking-tight">{userName}</h2>
                <p className="text-slate-500 dark:text-slate-400 font-bold text-sm mt-1">{userEmail}</p>
             </section>
+            
             <section className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-lg border border-slate-100 dark:border-slate-700 space-y-4">
                <div className="flex items-center justify-between"><div className="flex items-center gap-2.5"><div className="p-2 bg-emerald-100 dark:bg-emerald-900 rounded-xl"><Wallet size={18} className="text-emerald-600 dark:text-emerald-400" /></div><h3 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-wider">{t('wallet_bal')}</h3></div><p className="font-black text-emerald-600">₦{walletBalance.toLocaleString()}</p></div>
                <div className="grid grid-cols-2 gap-3 pt-2">
                   <button onClick={() => { setIsDepositing(true); setActiveTab('buy'); }} className="py-3 bg-emerald-600 text-white rounded-xl font-bold text-xs uppercase">{t('deposit')}</button>
                   <button onClick={() => { setIsWithdrawing(true); setActiveTab('buy'); }} className="py-3 border-2 border-emerald-100 text-emerald-600 rounded-xl font-bold text-xs uppercase">{t('withdraw')}</button>
                </div>
+            </section>
+
+            {/* Active Recurring Plans List */}
+            <section className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-lg border border-slate-100 dark:border-slate-700 space-y-4">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-emerald-100 dark:bg-emerald-900 rounded-xl"><Repeat size={18} className="text-emerald-600" /></div>
+                <h3 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-wider">{t('active_recurring')}</h3>
+              </div>
+              <div className="space-y-3">
+                {recurringPlans.length > 0 ? (
+                  recurringPlans.map(plan => (
+                    <div key={plan.id} className="p-4 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-700 rounded-2xl flex justify-between items-center">
+                      <div>
+                        <p className="text-sm font-black text-slate-800 dark:text-white">{plan.planName}</p>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase">{plan.phoneNumber} • {plan.frequency}</p>
+                      </div>
+                      <button onClick={() => setPlanToCancel(plan)} className="p-2 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950 rounded-xl transition-colors"><Trash2 size={16}/></button>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-xs text-slate-400 font-bold text-center py-4 italic">No active subscriptions</p>
+                )}
+              </div>
+            </section>
+
+            <section className="px-2 pt-4">
+               <button 
+                onClick={handleLogout}
+                className="w-full py-5 text-rose-500 bg-rose-50 dark:bg-rose-950/30 rounded-[30px] font-black flex items-center justify-center gap-3 hover:bg-rose-100 dark:hover:bg-rose-900/40 transition-all border-2 border-rose-100 dark:border-rose-900/50 shadow-sm active:scale-95"
+               >
+                 <LogOut size={22} />
+                 Sign Out
+               </button>
             </section>
           </div>
         )}
@@ -727,10 +798,44 @@ const App: React.FC = () => {
                   <CreditCard size={18} /><span className="text-[9px] font-black uppercase">Card</span>
                 </button>
               </div>
+
+              {selectedPlan && (
+                <div 
+                  onClick={() => setIsRecurringChecked(!isRecurringChecked)}
+                  className={`p-4 rounded-2xl border-2 transition-all cursor-pointer flex items-center justify-between ${isRecurringChecked ? 'border-emerald-600 bg-emerald-50 dark:bg-emerald-950' : 'border-slate-100 dark:border-slate-700'}`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-xl ${isRecurringChecked ? 'bg-emerald-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-400'}`}><Repeat size={16} /></div>
+                    <div>
+                      <p className={`text-[10px] font-black uppercase ${isRecurringChecked ? 'text-emerald-600' : 'text-slate-500'}`}>{t('auto_renew')}</p>
+                      <p className="text-[8px] font-bold text-slate-400 uppercase">{t('frequency')}: {selectedPlan.category}</p>
+                    </div>
+                  </div>
+                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${isRecurringChecked ? 'border-emerald-600 bg-emerald-600' : 'border-slate-300'}`}>
+                    {isRecurringChecked && <CheckCircle2 size={12} className="text-white" />}
+                  </div>
+                </div>
+              )}
+
               <div className="pt-4 border-t-2 border-slate-50 dark:border-slate-700">
                 <div className="flex justify-between items-center mb-5"><p className="text-sm font-bold text-slate-600 dark:text-slate-400">Total Charged</p><p className="text-2xl font-black text-emerald-600">₦{selectedPlan ? selectedPlan.price : amount}</p></div>
                 <button onClick={handlePurchase} className="w-full py-4 bg-emerald-600 text-white rounded-2xl font-black flex items-center justify-center gap-2 shadow-xl active:scale-95"><ShieldCheck size={20} /> {t('confirm')}</button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cancellation Confirmation Modal */}
+      {planToCancel && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[120] flex items-center justify-center p-6 animate-in fade-in">
+          <div className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-[40px] p-8 text-center space-y-6 shadow-2xl border-2 border-white/10">
+            <div className="w-20 h-20 bg-rose-100 dark:bg-rose-900/30 text-rose-600 rounded-3xl flex items-center justify-center mx-auto mb-2"><Trash2 size={40} /></div>
+            <h3 className="text-xl font-black text-slate-800 dark:text-white leading-tight">{t('cancel_confirm')}</h3>
+            <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">{planToCancel.planName} • {planToCancel.phoneNumber}</p>
+            <div className="space-y-3 pt-4">
+              <button onClick={confirmCancelRecurring} className="w-full py-4 bg-rose-600 text-white rounded-2xl font-black text-sm uppercase shadow-lg shadow-rose-200 dark:shadow-none active:scale-95 transition-all">{t('cancel_plan')}</button>
+              <button onClick={() => setPlanToCancel(null)} className="w-full py-4 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-200 rounded-2xl font-black text-sm uppercase active:scale-95 transition-all">{t('keep_plan')}</button>
             </div>
           </div>
         </div>
@@ -747,9 +852,21 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {/* Deposit / Withdraw Modals */}
+      {/* Deposit Modal */}
       {isDepositing && <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[70] flex items-center justify-center p-6"><div className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-[40px] p-6 text-center shadow-2xl border-2 border-white/10 animate-in zoom-in-95"><button onClick={() => setIsDepositing(false)} className="float-right p-2 text-slate-400 hover:text-rose-500 transition-colors"><X size={20}/></button><h3 className="text-xl font-black mb-6 text-slate-800 dark:text-white uppercase tracking-tight">{t('deposit')}</h3><div className="space-y-4 text-left mb-6"><div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Amount (₦)</label><input type="number" placeholder="Enter amount" value={depositAmount} onChange={e => setDepositAmount(e.target.value)} className="w-full p-4 bg-slate-50 dark:bg-slate-950 border-2 border-slate-100 dark:border-slate-800 rounded-2xl focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-white font-bold outline-none" /></div></div><button onClick={handleDepositSubmit} className="w-full py-4 bg-emerald-600 text-white rounded-2xl font-black text-sm uppercase shadow-lg active:scale-95">{t('confirm')}</button></div></div>}
+      
+      {/* Withdraw Modal */}
       {isWithdrawing && <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[70] flex items-center justify-center p-6"><div className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-[40px] p-6 text-center shadow-2xl border-2 border-white/10 animate-in zoom-in-95"><button onClick={() => setIsWithdrawing(false)} className="float-right p-2 text-slate-400 hover:text-rose-500 transition-colors"><X size={20}/></button><h3 className="text-xl font-black mb-6 text-slate-800 dark:text-white uppercase tracking-tight">{t('withdraw')}</h3><div className="space-y-4 text-left mb-6"><div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Amount (₦)</label><input type="number" placeholder="Enter amount" value={withdrawAmount} onChange={e => setWithdrawAmount(e.target.value)} className="w-full p-4 bg-slate-50 dark:bg-slate-950 border-2 border-slate-100 dark:border-slate-800 rounded-2xl focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-white font-bold outline-none" /></div></div><button onClick={handleWithdrawSubmit} className="w-full py-4 bg-emerald-600 text-white rounded-2xl font-black text-sm uppercase shadow-lg active:scale-95">{t('confirm')}</button></div></div>}
+      
+      <style>{`
+        .animate-spin-slow {
+          animation: spin 3s linear infinite;
+        }
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   );
 };

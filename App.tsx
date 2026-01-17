@@ -42,7 +42,12 @@ import {
   ZapOff,
   Building2,
   PhoneCall,
-  ShoppingBag
+  ShoppingBag,
+  Eye,
+  EyeOff,
+  ArrowUpRight,
+  ArrowDownLeft,
+  Wallet
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -77,6 +82,10 @@ const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authView, setAuthView] = useState<'login' | 'signup'>('login');
   const [activeTab, setActiveTab] = useState<'buy' | 'history' | 'assistant' | 'profile'>('buy');
+  
+  // Wallet State
+  const [walletBalance, setWalletBalance] = useState(12500);
+  const [isBalanceVisible, setIsBalanceVisible] = useState(true);
   
   // Theme State
   const [theme, setTheme] = useState<Theme>(() => (localStorage.getItem('theme') as Theme) || 'system');
@@ -203,24 +212,23 @@ const App: React.FC = () => {
       setIsConfirmingPlan(false);
       return;
     }
-    if (productType === 'Airtime' && (!amount || Number(amount) < 50)) {
-      alert("Minimum airtime is ₦50");
-      return;
-    }
-    if (productType === 'Data' && !selectedPlan) {
-      alert("Please select a data plan");
+    const cost = productType === 'Airtime' ? Number(amount) : selectedPlan!.price;
+    if (cost > walletBalance) {
+      alert("Insufficient wallet balance. Please top up!");
+      setIsConfirmingPlan(false);
       return;
     }
 
     setIsConfirmingPlan(false);
     setIsProcessing(true);
     setTimeout(() => {
+      setWalletBalance(prev => prev - cost);
       const newTx: Transaction = {
         id: 'tx_' + Math.random().toString(36).substr(2, 7),
         date: new Date().toLocaleString(),
         carrier: selectedCarrier,
         type: productType,
-        amount: productType === 'Airtime' ? Number(amount) : selectedPlan!.price,
+        amount: cost,
         phoneNumber,
         status: 'Success'
       };
@@ -252,6 +260,26 @@ const App: React.FC = () => {
       setShowSuccess(true);
       setIsRecurringChecked(false);
     }, 2000);
+  };
+
+  const handleDeposit = () => {
+    const amt = prompt("Enter amount to deposit (₦):", "5000");
+    if (amt && !isNaN(Number(amt))) {
+      setWalletBalance(prev => prev + Number(amt));
+      alert(`Success! ₦${amt} added to your wallet.`);
+    }
+  };
+
+  const handleWithdraw = () => {
+    const amt = prompt("Enter amount to withdraw (₦):", "1000");
+    if (amt && !isNaN(Number(amt))) {
+      if (Number(amt) > walletBalance) {
+        alert("Oya, your balance no reach that amount!");
+      } else {
+        setWalletBalance(prev => prev - Number(amt));
+        alert(`₦${amt} withdrawn to your linked account.`);
+      }
+    }
   };
 
   const handleAuth = (e: React.FormEvent) => {
@@ -309,8 +337,6 @@ const App: React.FC = () => {
 
   const detectedPlanFromAi = useMemo(() => {
     if (!aiPlanRecommendation) return null;
-    
-    // Scan all carriers and their plans to see if any plan name is mentioned in the recommendation
     for (const carrier of Object.values(Carrier)) {
       const plans = MOCK_DATA_PLANS[carrier];
       for (const plan of plans) {
@@ -535,9 +561,55 @@ const App: React.FC = () => {
       <main className="flex-1 overflow-y-auto custom-scrollbar p-4 pb-24">
         {activeTab === 'buy' && (
           <div className="space-y-6 animate-in fade-in duration-500">
+            {/* Wallet Section */}
+            <section className="bg-emerald-600 p-6 rounded-[35px] shadow-xl text-white space-y-6 relative overflow-hidden">
+               {/* Background Decorative Circle */}
+               <div className="absolute -right-10 -top-10 w-40 h-40 bg-white/10 rounded-full blur-2xl" />
+               
+               <div className="flex justify-between items-start">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <Wallet size={16} className="text-emerald-200" />
+                      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-100">Wallet Balance</p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <h2 className="text-3xl font-black tracking-tight">
+                        {isBalanceVisible ? `₦${walletBalance.toLocaleString()}` : '••••••••'}
+                      </h2>
+                      <button 
+                        onClick={() => setIsBalanceVisible(!isBalanceVisible)}
+                        className="p-1.5 hover:bg-white/10 rounded-full transition-colors"
+                      >
+                        {isBalanceVisible ? <EyeOff size={20} /> : <Eye size={20} />}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="bg-white/20 p-3 rounded-2xl backdrop-blur-sm">
+                    <Zap className="fill-yellow-400 text-yellow-400" size={24} />
+                  </div>
+               </div>
+
+               <div className="flex gap-3">
+                  <button 
+                    onClick={handleDeposit}
+                    className="flex-1 bg-white text-emerald-700 py-3.5 rounded-2xl font-black text-xs uppercase flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-all"
+                  >
+                    <ArrowDownLeft size={16} />
+                    Deposit
+                  </button>
+                  <button 
+                    onClick={handleWithdraw}
+                    className="flex-1 bg-emerald-700/50 backdrop-blur-sm border border-white/20 text-white py-3.5 rounded-2xl font-black text-xs uppercase flex items-center justify-center gap-2 active:scale-95 transition-all"
+                  >
+                    <ArrowUpRight size={16} />
+                    Withdraw
+                  </button>
+               </div>
+            </section>
+
             {/* Carrier Grid */}
             <section>
-              <h2 className="text-sm font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">Select Network</h2>
+              <h2 className="text-sm font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3 ml-1">Select Network</h2>
               <div className="grid grid-cols-4 gap-3">
                 {CARRIERS.map(c => (
                   <button

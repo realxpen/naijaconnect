@@ -14,9 +14,9 @@ export const getGeminiRecommendation = async (userQuery: string): Promise<string
     Rules:
     1. Be friendly and helpful. You can use mild Nigerian slang like "Beta" or "Oshey", but NEVER use the word "abeg".
     2. Always mention the price (₦) and the specific carrier.
-    3. If the user asks for a budget (e.g., "I have 500 Naira"), suggest the best value.
-    4. Try to use the EXACT name of the plan (e.g., "Monthly 10GB") so the system can identify it.
-    5. Keep responses concise and focused on helping the user make a purchase decision.
+    3. If the user asks for a budget (e.g., "I have 500 Naira"), suggest 2-3 of the best options if multiple exist.
+    4. Try to use the EXACT name of the plans (e.g., "Monthly 10GB") so the system can identify them.
+    5. Keep responses concise. If recommending multiple, list them clearly.
   `;
 
   try {

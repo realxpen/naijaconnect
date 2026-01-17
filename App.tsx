@@ -47,7 +47,9 @@ import {
   ArrowUpRight,
   ArrowDownLeft,
   Wallet,
-  Lightbulb
+  Lightbulb,
+  Banknote,
+  ChevronRight
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -63,7 +65,7 @@ import { CARRIERS, MOCK_DATA_PLANS } from './constants';
 import { getGeminiRecommendation } from './services/geminiService';
 
 type Theme = 'light' | 'dark' | 'system';
-type PaymentMethod = 'Card' | 'USSD' | 'Transfer';
+type PaymentMethod = 'Wallet' | 'Card' | 'USSD' | 'Transfer';
 
 interface RecurringPlan {
   id: string;
@@ -86,6 +88,13 @@ const App: React.FC = () => {
   // Wallet State
   const [walletBalance, setWalletBalance] = useState(12500);
   const [isBalanceVisible, setIsBalanceVisible] = useState(true);
+  const [isDepositing, setIsDepositing] = useState(false);
+  const [isWithdrawing, setIsWithdrawing] = useState(false);
+  const [depositMethod, setDepositMethod] = useState<'Card' | 'Transfer' | null>(null);
+  const [depositAmount, setDepositAmount] = useState('');
+  const [withdrawAmount, setWithdrawAmount] = useState('');
+  const [withdrawBank, setWithdrawBank] = useState('');
+  const [withdrawAccount, setWithdrawAccount] = useState('');
   
   // Theme State
   const [theme, setTheme] = useState<Theme>(() => (localStorage.getItem('theme') as Theme) || 'system');
@@ -110,7 +119,7 @@ const App: React.FC = () => {
   const [selectedTxForDetail, setSelectedTxForDetail] = useState<Transaction | null>(null);
   const [isConfirmingPlan, setIsConfirmingPlan] = useState(false);
   const [isRecurringChecked, setIsRecurringChecked] = useState(false);
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod>('Card');
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod>('Wallet');
 
   // Buy Tab AI Assistant State
   const [aiPlanQuery, setAiPlanQuery] = useState('');
@@ -222,7 +231,8 @@ const App: React.FC = () => {
       return;
     }
     const cost = productType === 'Airtime' ? Number(amount) : selectedPlan!.price;
-    if (cost > walletBalance) {
+    
+    if (selectedPaymentMethod === 'Wallet' && cost > walletBalance) {
       alert("Insufficient wallet balance. Please top up!");
       setIsConfirmingPlan(false);
       return;
@@ -231,7 +241,10 @@ const App: React.FC = () => {
     setIsConfirmingPlan(false);
     setIsProcessing(true);
     setTimeout(() => {
-      setWalletBalance(prev => prev - cost);
+      if (selectedPaymentMethod === 'Wallet') {
+        setWalletBalance(prev => prev - cost);
+      }
+      
       const newTx: Transaction = {
         id: 'tx_' + Math.random().toString(36).substr(2, 7),
         date: new Date().toLocaleString(),
@@ -271,24 +284,44 @@ const App: React.FC = () => {
     }, 2000);
   };
 
-  const handleDeposit = () => {
-    const amt = prompt("Enter amount to deposit (₦):", "5000");
-    if (amt && !isNaN(Number(amt))) {
-      setWalletBalance(prev => prev + Number(amt));
-      alert(`Success! ₦${amt} added to your wallet.`);
+  const handleDepositSubmit = () => {
+    if (!depositAmount || Number(depositAmount) < 100) {
+      alert("Minimum deposit is ₦100");
+      return;
     }
+    setIsProcessing(true);
+    setTimeout(() => {
+      setWalletBalance(prev => prev + Number(depositAmount));
+      setIsProcessing(false);
+      setIsDepositing(false);
+      setDepositAmount('');
+      setDepositMethod(null);
+      alert(`Oshey! ₦${depositAmount} has been added to your wallet.`);
+    }, 2000);
   };
 
-  const handleWithdraw = () => {
-    const amt = prompt("Enter amount to withdraw (₦):", "1000");
-    if (amt && !isNaN(Number(amt))) {
-      if (Number(amt) > walletBalance) {
-        alert("Oya, your balance no reach that amount!");
-      } else {
-        setWalletBalance(prev => prev - Number(amt));
-        alert(`₦${amt} withdrawn to your linked account.`);
-      }
+  const handleWithdrawSubmit = () => {
+    if (!withdrawAmount || Number(withdrawAmount) < 500) {
+      alert("Minimum withdrawal is ₦500");
+      return;
     }
+    if (Number(withdrawAmount) > walletBalance) {
+      alert("Insufficient balance for withdrawal");
+      return;
+    }
+    if (!withdrawAccount || withdrawAccount.length < 10) {
+      alert("Please enter a valid account number");
+      return;
+    }
+    setIsProcessing(true);
+    setTimeout(() => {
+      setWalletBalance(prev => prev - Number(withdrawAmount));
+      setIsProcessing(false);
+      setIsWithdrawing(false);
+      setWithdrawAmount('');
+      setWithdrawAccount('');
+      alert(`Success! ₦${withdrawAmount} is on its way to your bank.`);
+    }, 2000);
   };
 
   const handleAuth = (e: React.FormEvent) => {
@@ -352,27 +385,33 @@ const App: React.FC = () => {
     }
   };
 
-  const detectedPlanFromAi = useMemo(() => {
-    if (!aiPlanRecommendation) return null;
+  const detectedPlansFromAi = useMemo(() => {
+    if (!aiPlanRecommendation) return [];
+    
+    const detected: { plan: DataPlan; carrier: Carrier }[] = [];
+    const seenPlanIds = new Set<string>();
+
     for (const carrier of Object.values(Carrier)) {
       const plans = MOCK_DATA_PLANS[carrier];
       for (const plan of plans) {
         if (aiPlanRecommendation.toLowerCase().includes(plan.name.toLowerCase())) {
-          return { plan, carrier };
+          if (!seenPlanIds.has(plan.id)) {
+            detected.push({ plan, carrier });
+            seenPlanIds.add(plan.id);
+          }
         }
       }
     }
-    return null;
+    return detected;
   }, [aiPlanRecommendation]);
 
-  const buyAiRecommendedPlan = () => {
-    if (detectedPlanFromAi) {
-      setSelectedCarrier(detectedPlanFromAi.carrier);
-      setProductType('Data');
-      setSelectedPlan(detectedPlanFromAi.plan);
-      setIsConfirmingPlan(true);
-      setIsRecurringChecked(false);
-    }
+  const buyAiRecommendedPlan = (plan: DataPlan, carrier: Carrier) => {
+    setSelectedCarrier(carrier);
+    setProductType('Data');
+    setSelectedPlan(plan);
+    setIsConfirmingPlan(true);
+    setIsRecurringChecked(false);
+    setSelectedPaymentMethod('Wallet');
   };
 
   const filteredTransactions = useMemo(() => {
@@ -406,6 +445,7 @@ const App: React.FC = () => {
     setSelectedPlan(plan);
     setIsConfirmingPlan(true);
     setIsRecurringChecked(false);
+    setSelectedPaymentMethod('Wallet');
   };
 
   const openAirtimeConfirmation = () => {
@@ -418,7 +458,8 @@ const App: React.FC = () => {
       return;
     }
     setIsConfirmingPlan(true);
-    setSelectedPlan(null); // Mark as airtime
+    setSelectedPlan(null);
+    setSelectedPaymentMethod('Wallet');
   };
 
   const clearFilters = () => {
@@ -441,7 +482,6 @@ const App: React.FC = () => {
     handlePhoneChange(defaultPhone);
   };
 
-  // Splash Screen View
   if (isSplashScreen) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-emerald-600 text-white p-6 transition-all">
@@ -454,18 +494,10 @@ const App: React.FC = () => {
         <div className="mt-12 w-12 h-1 bg-white/20 rounded-full overflow-hidden">
           <div className="h-full bg-white animate-[loading_2s_ease-in-out_infinite]"></div>
         </div>
-        <style>{`
-          @keyframes loading {
-            0% { width: 0%; transform: translateX(-100%); }
-            50% { width: 100%; transform: translateX(0%); }
-            100% { width: 0%; transform: translateX(100%); }
-          }
-        `}</style>
       </div>
     );
   }
 
-  // Auth Screen View
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen flex flex-col max-w-lg mx-auto bg-slate-50 dark:bg-slate-900 shadow-2xl overflow-hidden p-6 transition-colors duration-300">
@@ -553,10 +585,8 @@ const App: React.FC = () => {
     );
   }
 
-  // Main App View
   return (
     <div className="min-h-screen flex flex-col max-w-lg mx-auto bg-slate-50 dark:bg-slate-900 shadow-2xl overflow-hidden relative transition-colors duration-300">
-      {/* Header */}
       <header className="bg-emerald-600 p-4 text-white flex justify-between items-center sticky top-0 z-20">
         <div className="flex items-center gap-2">
           <Zap className="fill-yellow-400 text-yellow-400" />
@@ -574,15 +604,11 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      {/* Main Content */}
       <main className="flex-1 overflow-y-auto custom-scrollbar p-4 pb-24">
         {activeTab === 'buy' && (
           <div className="space-y-6 animate-in fade-in duration-500">
-            {/* Wallet Section */}
             <section className="bg-emerald-600 p-6 rounded-[35px] shadow-xl text-white space-y-6 relative overflow-hidden">
-               {/* Background Decorative Circle */}
                <div className="absolute -right-10 -top-10 w-40 h-40 bg-white/10 rounded-full blur-2xl" />
-               
                <div className="flex justify-between items-start">
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
@@ -608,14 +634,14 @@ const App: React.FC = () => {
 
                <div className="flex gap-3">
                   <button 
-                    onClick={handleDeposit}
+                    onClick={() => setIsDepositing(true)}
                     className="flex-1 bg-white text-emerald-700 py-3.5 rounded-2xl font-black text-xs uppercase flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-all"
                   >
                     <ArrowDownLeft size={16} />
                     Deposit
                   </button>
                   <button 
-                    onClick={handleWithdraw}
+                    onClick={() => setIsWithdrawing(true)}
                     className="flex-1 bg-emerald-700/50 backdrop-blur-sm border border-white/20 text-white py-3.5 rounded-2xl font-black text-xs uppercase flex items-center justify-center gap-2 active:scale-95 transition-all"
                   >
                     <ArrowUpRight size={16} />
@@ -624,7 +650,6 @@ const App: React.FC = () => {
                </div>
             </section>
 
-            {/* Carrier Grid */}
             <section>
               <h2 className="text-sm font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3 ml-1">Select Network</h2>
               <div className="grid grid-cols-4 gap-3">
@@ -645,7 +670,6 @@ const App: React.FC = () => {
               </div>
             </section>
 
-            {/* AI Plan Assistant Search Bar */}
             <section className="bg-gradient-to-r from-emerald-500/10 to-blue-500/10 dark:from-emerald-500/5 dark:to-blue-500/5 p-4 rounded-3xl border border-emerald-100 dark:border-emerald-900/30 space-y-3">
               <div className="flex items-center gap-2 mb-1">
                 <Sparkles size={16} className="text-emerald-600 dark:text-emerald-400" />
@@ -655,7 +679,7 @@ const App: React.FC = () => {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-emerald-600/50" size={18} />
                 <input
                   type="text"
-                  placeholder="e.g., 'Best monthly plan for GLO'"
+                  placeholder="e.g., 'Cheapest 5GB monthly'"
                   value={aiPlanQuery}
                   onChange={(e) => setAiPlanQuery(e.target.value)}
                   onKeyPress={(e) => e.key === 'Enter' && handleAiPlanSearch()}
@@ -671,32 +695,54 @@ const App: React.FC = () => {
               </div>
 
               {aiPlanRecommendation && (
-                <div className="animate-in fade-in zoom-in-95 duration-300 relative bg-white dark:bg-slate-800/80 p-4 rounded-2xl border border-emerald-100 dark:border-emerald-900/40 shadow-sm">
+                <div className="animate-in fade-in zoom-in-95 duration-300 relative bg-white dark:bg-slate-800/80 p-4 rounded-2xl border border-emerald-100 dark:border-emerald-900/40 shadow-sm space-y-4">
                   <button 
                     onClick={() => setAiPlanRecommendation(null)}
                     className="absolute top-2 right-2 text-slate-400 hover:text-rose-500 transition-colors"
                   >
                     <X size={14} />
                   </button>
-                  <div className="space-y-3">
+                  <div>
+                    <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest mb-1">AI Recommendation</p>
                     <p className="text-sm text-slate-700 dark:text-slate-200 leading-relaxed italic font-medium">
                       "{aiPlanRecommendation}"
                     </p>
-                    {detectedPlanFromAi && (
-                      <button
-                        onClick={buyAiRecommendedPlan}
-                        className="w-full py-2.5 bg-emerald-600 text-white rounded-xl font-black text-xs uppercase flex items-center justify-center gap-2 hover:bg-emerald-700 transition-all shadow-md active:scale-95"
-                      >
-                        <ShoppingBag size={14} />
-                        Buy This Plan ({detectedPlanFromAi.plan.name})
-                      </button>
-                    )}
                   </div>
+
+                  {detectedPlansFromAi.length > 0 && (
+                    <div className="space-y-2">
+                       <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Suggested Plans</p>
+                       <div className="flex gap-3 overflow-x-auto pb-2 custom-scrollbar snap-x">
+                        {detectedPlansFromAi.map((item, idx) => (
+                          <div 
+                            key={`${item.plan.id}-${idx}`}
+                            className="flex-shrink-0 w-48 p-4 bg-slate-50 dark:bg-slate-900 border-2 border-slate-100 dark:border-slate-800 rounded-2xl snap-start flex flex-col justify-between space-y-3"
+                          >
+                            <div className="flex justify-between items-start">
+                              <div className={`p-1.5 rounded-lg ${CARRIERS.find(c => c.id === item.carrier)?.color || 'bg-slate-200'}`}>
+                                <Wifi size={14} className="text-white" />
+                              </div>
+                              <span className="text-[10px] font-black text-slate-400 uppercase">{item.carrier}</span>
+                            </div>
+                            <div>
+                              <p className="text-xs font-black text-slate-800 dark:text-white truncate">{item.plan.name}</p>
+                              <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">₦{item.plan.price}</p>
+                            </div>
+                            <button 
+                              onClick={() => buyAiRecommendedPlan(item.plan, item.carrier)}
+                              className="w-full py-2 bg-emerald-600 text-white rounded-xl text-[10px] font-black uppercase hover:bg-emerald-700 transition-all flex items-center justify-center gap-1"
+                            >
+                              <ShoppingBag size={12} /> Buy Now
+                            </button>
+                          </div>
+                        ))}
+                       </div>
+                    </div>
+                  )}
                 </div>
               )}
             </section>
 
-            {/* Product Type Toggle */}
             <div className="flex bg-slate-200 dark:bg-slate-800 p-1 rounded-xl shadow-inner">
               <button
                 onClick={() => setProductType('Airtime')}
@@ -712,7 +758,6 @@ const App: React.FC = () => {
               </button>
             </div>
 
-            {/* Input Form */}
             <section className="bg-white dark:bg-slate-800 p-5 rounded-3xl shadow-lg border border-slate-100 dark:border-slate-700 space-y-5">
               <div>
                 <div className="flex justify-between items-center mb-1.5">
@@ -736,7 +781,6 @@ const App: React.FC = () => {
                   />
                 </div>
                 
-                {/* Recent Numbers quick add */}
                 <div className="mt-3">
                   <p className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase mb-2 flex items-center gap-1">
                     <HistoryIcon size={10} /> Quick Add History
@@ -877,7 +921,7 @@ const App: React.FC = () => {
 
         {activeTab === 'history' && (
           <div className="space-y-6 animate-in slide-in-from-right duration-500">
-            <section className="bg-white dark:bg-slate-800 p-5 rounded-3xl shadow-lg border border-slate-100 dark:border-slate-700">
+             <section className="bg-white dark:bg-slate-800 p-5 rounded-3xl shadow-lg border border-slate-100 dark:border-slate-700">
               <div className="flex justify-between items-start mb-6">
                 <h2 className="text-lg font-black text-slate-800 dark:text-white flex items-center gap-2">
                   <HistoryIcon size={20} className="text-emerald-600" />
@@ -1010,7 +1054,7 @@ const App: React.FC = () => {
 
         {activeTab === 'assistant' && (
           <div className="flex flex-col h-[calc(100vh-180px)] animate-in slide-in-from-bottom duration-500">
-            <div className="flex-1 overflow-y-auto space-y-4 pr-1 custom-scrollbar pb-4">
+             <div className="flex-1 overflow-y-auto space-y-4 pr-1 custom-scrollbar pb-4">
               <div className="bg-emerald-50 dark:bg-emerald-950 p-5 rounded-3xl border-2 border-emerald-100 dark:border-emerald-900 text-sm text-emerald-800 dark:text-emerald-300 font-medium leading-relaxed shadow-sm">
                 👋 <strong>Oshey!</strong> I'm your NaijaConnect Assistant. Need the best plan or having issues? Just ask me! 🇳🇬
               </div>
@@ -1038,7 +1082,6 @@ const App: React.FC = () => {
             </div>
 
             <div className="mt-4 space-y-3">
-              {/* Quick Tips Buttons */}
               <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
                 {quickTips.map((tip, idx) => (
                   <button
@@ -1075,7 +1118,7 @@ const App: React.FC = () => {
 
         {activeTab === 'profile' && (
           <div className="space-y-6 animate-in slide-in-from-top duration-500 pb-12">
-            <section className="bg-white dark:bg-slate-800 p-8 rounded-[40px] shadow-xl border border-slate-100 dark:border-slate-700 flex flex-col items-center text-center relative overflow-hidden">
+             <section className="bg-white dark:bg-slate-800 p-8 rounded-[40px] shadow-xl border border-slate-100 dark:border-slate-700 flex flex-col items-center text-center relative overflow-hidden">
                <div className="absolute top-0 left-0 w-full h-2 bg-emerald-600" />
                <div className="w-28 h-28 bg-emerald-600 rounded-[35px] flex items-center justify-center text-white text-4xl font-black mb-6 relative ring-8 ring-emerald-50 dark:ring-emerald-900/20 shadow-lg transform rotate-3">
                   <span className="transform -rotate-3 uppercase">{userName.charAt(0)}</span>
@@ -1086,8 +1129,33 @@ const App: React.FC = () => {
                <h2 className="text-2xl font-black text-slate-800 dark:text-white tracking-tight">{userName}</h2>
                <p className="text-slate-500 dark:text-slate-400 font-bold text-sm mt-1">{userEmail}</p>
             </section>
+            
+            <section className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-lg border border-slate-100 dark:border-slate-700 space-y-4">
+               <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 bg-emerald-100 dark:bg-emerald-900 rounded-xl">
+                      <Wallet size={18} className="text-emerald-600 dark:text-emerald-400" />
+                    </div>
+                    <h3 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-wider">My Wallet</h3>
+                  </div>
+                  <p className="font-black text-emerald-600">₦{walletBalance.toLocaleString()}</p>
+               </div>
+               <div className="grid grid-cols-2 gap-3 pt-2">
+                  <button 
+                    onClick={() => { setIsDepositing(true); setActiveTab('buy'); }} 
+                    className="py-3 bg-emerald-600 text-white rounded-xl font-bold text-xs uppercase"
+                  >
+                    Deposit
+                  </button>
+                  <button 
+                    onClick={() => { setIsWithdrawing(true); setActiveTab('buy'); }} 
+                    className="py-3 border-2 border-emerald-100 text-emerald-600 rounded-xl font-bold text-xs uppercase"
+                  >
+                    Withdraw
+                  </button>
+               </div>
+            </section>
 
-            {/* Auto-Renewals Management Section */}
             <section className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-lg border border-slate-100 dark:border-slate-700 space-y-4">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2.5">
@@ -1148,7 +1216,7 @@ const App: React.FC = () => {
             </section>
 
             <section className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-lg border border-slate-100 dark:border-slate-700 space-y-6">
-              <div className="flex items-center gap-2.5">
+               <div className="flex items-center gap-2.5">
                 <div className="p-2 bg-slate-100 dark:bg-slate-700 rounded-xl">
                   <UserIcon size={18} className="text-slate-600 dark:text-slate-400" />
                 </div>
@@ -1188,139 +1256,174 @@ const App: React.FC = () => {
                 </button>
               </div>
             </section>
-
-            <section className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-lg border border-slate-100 dark:border-slate-700 space-y-5">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 bg-slate-100 dark:bg-slate-700 rounded-xl">
-                  <Monitor size={18} className="text-slate-600 dark:text-slate-400" />
-                </div>
-                <h3 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-wider">Appearance</h3>
-              </div>
-
-              <div className="flex bg-slate-100 dark:bg-slate-900 p-1.5 rounded-2xl gap-2 shadow-inner">
-                <button 
-                  onClick={() => setTheme('light')}
-                  className={`flex-1 py-4 rounded-xl flex flex-col items-center gap-2 transition-all ${theme === 'light' ? 'bg-white dark:bg-slate-700 shadow-md text-emerald-600' : 'text-slate-400 dark:text-slate-600'}`}
-                >
-                  <Sun size={20} />
-                  <span className="text-[10px] font-black uppercase">Light</span>
-                </button>
-                <button 
-                  onClick={() => setTheme('dark')}
-                  className={`flex-1 py-4 rounded-xl flex flex-col items-center gap-2 transition-all ${theme === 'dark' ? 'bg-white dark:bg-slate-700 shadow-md text-emerald-600' : 'text-slate-400 dark:text-slate-600'}`}
-                >
-                  <Moon size={20} />
-                  <span className="text-[10px] font-black uppercase">Dark</span>
-                </button>
-                <button 
-                  onClick={() => setTheme('system')}
-                  className={`flex-1 py-4 rounded-xl flex flex-col items-center gap-2 transition-all ${theme === 'system' ? 'bg-white dark:bg-slate-700 shadow-md text-emerald-600' : 'text-slate-400 dark:text-slate-600'}`}
-                >
-                  <Monitor size={20} />
-                  <span className="text-[10px] font-black uppercase">System</span>
-                </button>
-              </div>
-            </section>
-
-            <section className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-lg border border-slate-100 dark:border-slate-700 space-y-4">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 bg-slate-100 dark:bg-slate-700 rounded-xl">
-                  <Bell size={18} className="text-slate-600 dark:text-slate-400" />
-                </div>
-                <h3 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-wider">Communication</h3>
-              </div>
-              <div className="space-y-5 px-1">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-slate-800 dark:text-white font-black">Email Receipts</p>
-                    <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase">Sent after every purchase</p>
-                  </div>
-                  <div className="w-11 h-6 bg-emerald-600 rounded-full relative cursor-pointer shadow-inner">
-                    <div className="absolute right-1 top-1 w-4 h-4 bg-white rounded-full shadow-md"></div>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between border-t border-slate-50 dark:border-slate-700 pt-5">
-                  <div>
-                    <p className="text-sm text-slate-800 dark:text-white font-black">SMS Alerts</p>
-                    <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase">Low balance & status updates</p>
-                  </div>
-                  <div className="w-11 h-6 bg-slate-200 dark:bg-slate-700 rounded-full relative cursor-pointer shadow-inner">
-                    <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full shadow-md"></div>
-                  </div>
-                </div>
-              </div>
-            </section>
-
+            
             <section className="px-2 pt-4">
                <button 
                 onClick={handleLogout}
                 className="w-full py-5 text-rose-500 bg-rose-50 dark:bg-rose-950/30 rounded-[30px] font-black flex items-center justify-center gap-3 hover:bg-rose-100 dark:hover:bg-rose-900/40 transition-all border-2 border-rose-100 dark:border-rose-900/50 shadow-sm active:scale-95"
                >
                  <LogOut size={22} />
-                 Sign Out from NaijaConnect
+                 Sign Out
                </button>
-               <p className="text-center text-[10px] font-black text-slate-300 dark:text-slate-700 mt-6 uppercase tracking-[0.2em]">v2.4.0 • Built with Love 🇳🇬</p>
             </section>
           </div>
         )}
       </main>
 
-      {/* Navigation Bar */}
       <nav className="fixed bottom-0 left-0 right-0 max-w-lg mx-auto bg-white/90 dark:bg-slate-800/90 backdrop-blur-md border-t border-slate-100 dark:border-slate-700 px-6 py-4 flex justify-between items-center z-40 transition-colors duration-300 shadow-[0_-8px_30px_rgb(0,0,0,0.08)]">
-        <button
-          onClick={() => setActiveTab('buy')}
-          className={`flex flex-col items-center gap-1.5 transition-all ${activeTab === 'buy' ? 'text-emerald-600 scale-110 drop-shadow-sm' : 'text-slate-400 dark:text-slate-600'}`}
-        >
-          <div className={`p-1 rounded-lg ${activeTab === 'buy' ? 'bg-emerald-50 dark:bg-emerald-900/30' : ''}`}>
-            <Wifi size={24} strokeWidth={activeTab === 'buy' ? 3 : 2} />
-          </div>
+        <button onClick={() => setActiveTab('buy')} className={`flex flex-col items-center gap-1.5 transition-all ${activeTab === 'buy' ? 'text-emerald-600 scale-110 drop-shadow-sm' : 'text-slate-400 dark:text-slate-600'}`}>
+          <div className={`p-1 rounded-lg ${activeTab === 'buy' ? 'bg-emerald-50 dark:bg-emerald-900/30' : ''}`}><Wifi size={24} strokeWidth={activeTab === 'buy' ? 3 : 2} /></div>
           <span className="text-[9px] font-black uppercase tracking-wider">Buy</span>
         </button>
-        <button
-          onClick={() => setActiveTab('history')}
-          className={`flex flex-col items-center gap-1.5 transition-all ${activeTab === 'history' ? 'text-emerald-600 scale-110' : 'text-slate-400 dark:text-slate-600'}`}
-        >
-          <div className={`p-1 rounded-lg ${activeTab === 'history' ? 'bg-emerald-50 dark:bg-emerald-900/30' : ''}`}>
-            <HistoryIcon size={24} strokeWidth={activeTab === 'history' ? 3 : 2} />
-          </div>
+        <button onClick={() => setActiveTab('history')} className={`flex flex-col items-center gap-1.5 transition-all ${activeTab === 'history' ? 'text-emerald-600 scale-110' : 'text-slate-400 dark:text-slate-600'}`}>
+          <div className={`p-1 rounded-lg ${activeTab === 'history' ? 'bg-emerald-50 dark:bg-emerald-900/30' : ''}`}><HistoryIcon size={24} strokeWidth={activeTab === 'history' ? 3 : 2} /></div>
           <span className="text-[9px] font-black uppercase tracking-wider">Activity</span>
         </button>
-        <button
-          onClick={() => setActiveTab('assistant')}
-          className={`flex flex-col items-center gap-1.5 transition-all ${activeTab === 'assistant' ? 'text-emerald-600 scale-110' : 'text-slate-400 dark:text-slate-600'}`}
-        >
-          <div className={`p-1 rounded-lg ${activeTab === 'assistant' ? 'bg-emerald-50 dark:bg-emerald-900/30' : ''}`}>
-            <MessageCircle size={24} strokeWidth={activeTab === 'assistant' ? 3 : 2} />
-          </div>
+        <button onClick={() => setActiveTab('assistant')} className={`flex flex-col items-center gap-1.5 transition-all ${activeTab === 'assistant' ? 'text-emerald-600 scale-110' : 'text-slate-400 dark:text-slate-600'}`}>
+          <div className={`p-1 rounded-lg ${activeTab === 'assistant' ? 'bg-emerald-50 dark:bg-emerald-900/30' : ''}`}><MessageCircle size={24} strokeWidth={activeTab === 'assistant' ? 3 : 2} /></div>
           <span className="text-[9px] font-black uppercase tracking-wider">Ask AI</span>
         </button>
-        <button
-          onClick={() => setActiveTab('profile')}
-          className={`flex flex-col items-center gap-1.5 transition-all ${activeTab === 'profile' ? 'text-emerald-600 scale-110' : 'text-slate-400 dark:text-slate-600'}`}
-        >
-          <div className={`p-1 rounded-lg ${activeTab === 'profile' ? 'bg-emerald-50 dark:bg-emerald-900/30' : ''}`}>
-            <UserIcon size={24} strokeWidth={activeTab === 'profile' ? 3 : 2} />
-          </div>
+        <button onClick={() => setActiveTab('profile')} className={`flex flex-col items-center gap-1.5 transition-all ${activeTab === 'profile' ? 'text-emerald-600 scale-110' : 'text-slate-400 dark:text-slate-600'}`}>
+          <div className={`p-1 rounded-lg ${activeTab === 'profile' ? 'bg-emerald-50 dark:bg-emerald-900/30' : ''}`}><UserIcon size={24} strokeWidth={activeTab === 'profile' ? 3 : 2} /></div>
           <span className="text-[9px] font-black uppercase tracking-wider">Profile</span>
         </button>
       </nav>
 
-      {/* Plan Selection Confirmation Modal */}
+      {isDepositing && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[70] flex items-center justify-center p-6 animate-in fade-in duration-300">
+          <div className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-[40px] overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 border-2 border-white/20">
+            <div className="bg-emerald-600 p-6 flex flex-col items-center text-center text-white relative">
+               <button onClick={() => { setIsDepositing(false); setDepositMethod(null); }} className="absolute top-4 right-4 p-2 bg-white/20 hover:bg-white/30 rounded-full transition-colors"><X size={18} /></button>
+               <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mb-3 shadow-xl border-4 border-white/30"><ArrowDownLeft size={32} /></div>
+               <h3 className="text-xl font-black">Deposit Funds</h3>
+               <p className="text-emerald-100 text-[10px] font-black uppercase tracking-widest mt-0.5 opacity-80">Add money to your NaijaConnect wallet</p>
+            </div>
+
+            <div className="p-6 space-y-5 max-h-[70vh] overflow-y-auto custom-scrollbar">
+              {!depositMethod ? (
+                <div className="space-y-3">
+                  <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">Select Method</p>
+                  <button onClick={() => setDepositMethod('Card')} className="w-full flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border-2 border-slate-100 dark:border-slate-700 hover:border-emerald-600 transition-all group">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-white dark:bg-slate-800 rounded-xl shadow-sm"><CreditCard size={20} className="text-emerald-600" /></div>
+                      <div className="text-left">
+                        <p className="text-sm font-black text-slate-800 dark:text-white">Instant Card</p>
+                        <p className="text-[10px] font-bold text-slate-400">Debit or Credit Card</p>
+                      </div>
+                    </div>
+                    <ChevronRight size={18} className="text-slate-300 group-hover:text-emerald-600" />
+                  </button>
+                  <button onClick={() => setDepositMethod('Transfer')} className="w-full flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border-2 border-slate-100 dark:border-slate-700 hover:border-emerald-600 transition-all group">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-white dark:bg-slate-800 rounded-xl shadow-sm"><Building2 size={20} className="text-emerald-600" /></div>
+                      <div className="text-left">
+                        <p className="text-sm font-black text-slate-800 dark:text-white">Bank Transfer</p>
+                        <p className="text-[10px] font-bold text-slate-400">Your Virtual Account</p>
+                      </div>
+                    </div>
+                    <ChevronRight size={18} className="text-slate-300 group-hover:text-emerald-600" />
+                  </button>
+                </div>
+              ) : depositMethod === 'Card' ? (
+                <div className="space-y-4">
+                  <button onClick={() => setDepositMethod(null)} className="text-[10px] font-black text-emerald-600 uppercase flex items-center gap-1 hover:underline mb-2"><ArrowDownLeft size={10} className="rotate-90" /> Change Method</button>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Deposit Amount (₦)</label>
+                    <input type="number" value={depositAmount} onChange={e => setDepositAmount(e.target.value)} placeholder="Min ₦100" className="w-full p-4 bg-slate-50 dark:bg-slate-900 border-2 border-slate-100 dark:border-slate-700 rounded-2xl focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-white outline-none font-black" />
+                  </div>
+                  <div className="p-4 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-900/50 rounded-2xl flex items-start gap-3">
+                    <ShieldCheck size={18} className="text-emerald-600 flex-shrink-0" />
+                    <p className="text-[10px] text-emerald-800 dark:text-emerald-300 font-bold leading-relaxed">Secure payment processed via our PCI-DSS compliant gateway. Your card details are never stored.</p>
+                  </div>
+                  <button onClick={handleDepositSubmit} disabled={isProcessing || !depositAmount} className="w-full py-4 bg-emerald-600 text-white rounded-2xl font-black flex items-center justify-center gap-2 shadow-lg active:scale-95 disabled:opacity-50">
+                    {isProcessing ? <Loader2 className="animate-spin" /> : <><CreditCard size={20} /> Pay ₦{depositAmount || '0'} Now</>}
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <button onClick={() => setDepositMethod(null)} className="text-[10px] font-black text-emerald-600 uppercase flex items-center gap-1 hover:underline mb-2"><ArrowDownLeft size={10} className="rotate-90" /> Change Method</button>
+                  <div className="p-6 bg-slate-900 rounded-3xl text-white space-y-4">
+                    <div>
+                      <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Bank Name</p>
+                      <p className="text-sm font-black">WEMA BANK / NAIJACONNECT</p>
+                    </div>
+                    <div>
+                      <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Account Number</p>
+                      <div className="flex justify-between items-center">
+                        <p className="text-xl font-mono font-black tracking-wider text-emerald-400">9208312044</p>
+                        <button onClick={() => alert('Account Number Copied!')} className="p-2 hover:bg-white/10 rounded-xl transition-colors"><Copy size={16} /></button>
+                      </div>
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-slate-500 font-bold text-center px-4 italic leading-relaxed">Transfer any amount to this account. Your wallet will be updated automatically within 2 minutes.</p>
+                  <button onClick={handleDepositSubmit} className="w-full py-4 bg-emerald-600 text-white rounded-2xl font-black shadow-lg active:scale-95">I Have Made The Transfer</button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isWithdrawing && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[70] flex items-center justify-center p-6 animate-in fade-in duration-300">
+          <div className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-[40px] overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 border-2 border-white/20">
+            <div className="bg-slate-900 p-6 flex flex-col items-center text-center text-white relative">
+               <button onClick={() => setIsWithdrawing(false)} className="absolute top-4 right-4 p-2 bg-white/20 hover:bg-white/30 rounded-full transition-colors"><X size={18} /></button>
+               <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mb-3 shadow-xl border-4 border-white/30"><ArrowUpRight size={32} /></div>
+               <h3 className="text-xl font-black">Withdraw Funds</h3>
+               <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mt-0.5 opacity-80">Send money from wallet to bank</p>
+            </div>
+
+            <div className="p-6 space-y-5 max-h-[70vh] overflow-y-auto custom-scrollbar">
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Withdrawal Amount (₦)</label>
+                  <div className="relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-black">₦</span>
+                    <input type="number" value={withdrawAmount} onChange={e => setWithdrawAmount(e.target.value)} placeholder="Min ₦500" className="w-full pl-8 pr-4 py-4 bg-slate-50 dark:bg-slate-900 border-2 border-slate-100 dark:border-slate-700 rounded-2xl focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-white outline-none font-black" />
+                  </div>
+                  <p className="text-[9px] font-bold text-slate-400 ml-1">Available: ₦{walletBalance.toLocaleString()}</p>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Bank Account Details</label>
+                  <select value={withdrawBank} onChange={e => setWithdrawBank(e.target.value)} className="w-full p-4 bg-slate-50 dark:bg-slate-900 border-2 border-slate-100 dark:border-slate-700 rounded-2xl focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-white outline-none font-black mb-2 appearance-none">
+                    <option value="">Select Bank</option>
+                    <option value="GTB">Guaranty Trust Bank</option>
+                    <option value="ZENITH">Zenith Bank</option>
+                    <option value="ACCESS">Access Bank</option>
+                    <option value="KUDA">Kuda Bank</option>
+                    <option value="OPAY">OPay Digital</option>
+                  </select>
+                  <input type="tel" maxLength={10} value={withdrawAccount} onChange={e => setWithdrawAccount(e.target.value.replace(/\D/g,''))} placeholder="Account Number" className="w-full p-4 bg-slate-50 dark:bg-slate-900 border-2 border-slate-100 dark:border-slate-700 rounded-2xl focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-white outline-none font-black" />
+                </div>
+
+                <div className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border-2 border-slate-100 dark:border-slate-700">
+                  <div className="flex justify-between items-center text-[10px] font-black uppercase text-slate-500">
+                    <span>Processing Fee</span>
+                    <span>₦25.00</span>
+                  </div>
+                </div>
+
+                <button onClick={handleWithdrawSubmit} disabled={isProcessing || !withdrawAmount || !withdrawAccount || !withdrawBank} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black flex items-center justify-center gap-2 shadow-lg active:scale-95 disabled:opacity-50">
+                  {isProcessing ? <Loader2 className="animate-spin" /> : <><Banknote size={20} /> Withdraw ₦{withdrawAmount || '0'}</>}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {isConfirmingPlan && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[60] flex items-center justify-center p-6 animate-in fade-in duration-300">
           <div className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-[40px] overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 border-2 border-white/20">
             <div className="bg-emerald-600 p-6 flex flex-col items-center text-center text-white relative">
-               <button 
-                  onClick={() => setIsConfirmingPlan(false)}
-                  className="absolute top-4 right-4 p-2 bg-white/20 hover:bg-white/30 rounded-full transition-colors"
-                >
-                  <X size={18} />
-                </button>
-              <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-3 shadow-xl border-4 border-white/30 ${CARRIERS.find(c => c.id === selectedCarrier)?.color}`}>
-                {productType === 'Data' ? <Wifi size={32} className="text-white drop-shadow-md" /> : <Smartphone size={32} className="text-white drop-shadow-md" />}
-              </div>
-              <h3 className="text-xl font-black">{selectedPlan ? selectedPlan.name : `${selectedCarrier} Airtime`}</h3>
-              <p className="text-emerald-100 text-[10px] font-black uppercase tracking-widest mt-0.5 opacity-80">{selectedCarrier} • {phoneNumber}</p>
+               <button onClick={() => setIsConfirmingPlan(false)} className="absolute top-4 right-4 p-2 bg-white/20 hover:bg-white/30 rounded-full transition-colors"><X size={18} /></button>
+               <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-3 shadow-xl border-4 border-white/30 ${CARRIERS.find(c => c.id === selectedCarrier)?.color}`}>
+                 {productType === 'Data' ? <Wifi size={32} className="text-white drop-shadow-md" /> : <Smartphone size={32} className="text-white drop-shadow-md" />}
+               </div>
+               <h3 className="text-xl font-black">{selectedPlan ? selectedPlan.name : `${selectedCarrier} Airtime`}</h3>
+               <p className="text-emerald-100 text-[10px] font-black uppercase tracking-widest mt-0.5 opacity-80">{selectedCarrier} • {phoneNumber}</p>
             </div>
 
             <div className="p-6 space-y-5 max-h-[70vh] overflow-y-auto custom-scrollbar">
@@ -1335,53 +1438,48 @@ const App: React.FC = () => {
                 </div>
               </div>
 
-              {/* Payment Method Selection */}
               <div className="space-y-3">
-                <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Preferred Payment Method</p>
-                <div className="grid grid-cols-3 gap-2">
-                  {[
-                    { id: 'Card', icon: <CreditCard size={18} />, label: 'Card' },
-                    { id: 'USSD', icon: <PhoneCall size={18} />, label: 'USSD' },
-                    { id: 'Transfer', icon: <Building2 size={18} />, label: 'Bank' }
-                  ].map(method => (
-                    <button
-                      key={method.id}
-                      onClick={() => setSelectedPaymentMethod(method.id as PaymentMethod)}
-                      className={`flex flex-col items-center gap-1.5 p-3 rounded-2xl border-2 transition-all ${
-                        selectedPaymentMethod === method.id 
-                          ? 'border-emerald-600 bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400 shadow-md' 
-                          : 'border-slate-50 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50 text-slate-400'
-                      }`}
-                    >
-                      {method.icon}
-                      <span className="text-[9px] font-black uppercase">{method.label}</span>
-                    </button>
-                  ))}
+                <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Payment Method</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => setSelectedPaymentMethod('Wallet')}
+                    className={`flex items-center gap-3 p-3 rounded-2xl border-2 transition-all ${
+                      selectedPaymentMethod === 'Wallet' 
+                        ? 'border-emerald-600 bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400 shadow-md' 
+                        : 'border-slate-50 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50 text-slate-400'
+                    }`}
+                  >
+                    <Wallet size={18} />
+                    <div className="text-left">
+                      <span className="text-[9px] font-black uppercase block">Wallet</span>
+                      <span className="text-[8px] font-bold">Bal: ₦{walletBalance.toLocaleString()}</span>
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => setSelectedPaymentMethod('Card')}
+                    className={`flex items-center gap-3 p-3 rounded-2xl border-2 transition-all ${
+                      selectedPaymentMethod === 'Card' 
+                        ? 'border-emerald-600 bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400 shadow-md' 
+                        : 'border-slate-50 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50 text-slate-400'
+                    }`}
+                  >
+                    <CreditCard size={18} />
+                    <span className="text-[9px] font-black uppercase">Card / Other</span>
+                  </button>
                 </div>
               </div>
 
               {productType === 'Data' && (
-                <div 
-                  onClick={() => setIsRecurringChecked(!isRecurringChecked)}
-                  className={`group p-4 rounded-2xl border-2 cursor-pointer transition-all ${
-                    isRecurringChecked 
-                      ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-600' 
-                      : 'bg-slate-50 dark:bg-slate-900/50 border-slate-100 dark:border-slate-700 hover:border-emerald-200 shadow-sm'
-                  }`}
-                >
+                <div onClick={() => setIsRecurringChecked(!isRecurringChecked)} className={`group p-4 rounded-2xl border-2 cursor-pointer transition-all ${isRecurringChecked ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-600' : 'bg-slate-50 dark:bg-slate-900/50 border-slate-100 dark:border-slate-700 hover:border-emerald-200 shadow-sm'}`}>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <div className={`p-2 rounded-xl shadow-sm transition-colors ${isRecurringChecked ? 'bg-emerald-600 text-white' : 'bg-white dark:bg-slate-800 text-slate-400'}`}>
-                        <Repeat size={14} />
-                      </div>
+                      <div className={`p-2 rounded-xl shadow-sm transition-colors ${isRecurringChecked ? 'bg-emerald-600 text-white' : 'bg-white dark:bg-slate-800 text-slate-400'}`}><Repeat size={14} /></div>
                       <div>
                         <p className={`text-[10px] font-black uppercase tracking-tight ${isRecurringChecked ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400'}`}>Auto-renewal</p>
                         <p className="text-[8px] font-bold text-slate-400 dark:text-slate-500">Every {selectedPlan?.validity}</p>
                       </div>
                     </div>
-                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${isRecurringChecked ? 'bg-emerald-600 border-emerald-600' : 'border-slate-300'}`}>
-                      {isRecurringChecked && <CheckCircle2 size={12} className="text-white" />}
-                    </div>
+                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${isRecurringChecked ? 'bg-emerald-600 border-emerald-600' : 'border-slate-300'}`}>{isRecurringChecked && <CheckCircle2 size={12} className="text-white" />}</div>
                   </div>
                 </div>
               )}
@@ -1393,22 +1491,11 @@ const App: React.FC = () => {
                 </div>
                 
                 <div className="space-y-3">
-                  <button
-                    onClick={handlePurchase}
-                    className="w-full py-4 bg-emerald-600 text-white rounded-2xl font-black flex items-center justify-center gap-2 hover:bg-emerald-700 transition-all shadow-xl active:scale-95"
-                  >
+                  <button onClick={handlePurchase} className="w-full py-4 bg-emerald-600 text-white rounded-2xl font-black flex items-center justify-center gap-2 shadow-xl active:scale-95">
                     <ShieldCheck size={20} />
-                    Pay with {selectedPaymentMethod}
+                    Confirm Payment
                   </button>
-                  <button
-                    onClick={() => {
-                      setIsConfirmingPlan(false);
-                      setIsRecurringChecked(false);
-                    }}
-                    className="w-full py-3 bg-white dark:bg-slate-700 text-slate-400 dark:text-slate-400 rounded-2xl font-black hover:bg-slate-50 dark:hover:bg-slate-600 transition-colors text-[10px] uppercase tracking-widest"
-                  >
-                    Cancel
-                  </button>
+                  <button onClick={() => setIsConfirmingPlan(false)} className="w-full py-3 text-slate-400 font-black text-[10px] uppercase tracking-widest">Cancel</button>
                 </div>
               </div>
             </div>
@@ -1416,114 +1503,42 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {/* Transaction Detail Modal */}
       {selectedTxForDetail && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[100] flex items-center justify-center p-6 animate-in fade-in duration-300">
           <div className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-[40px] overflow-hidden shadow-2xl animate-in slide-in-from-bottom duration-300 border border-slate-100 dark:border-slate-700">
             <div className={`p-8 text-white text-center relative ${selectedTxForDetail.status === 'Success' ? 'bg-emerald-600' : 'bg-rose-600'}`}>
-              <button 
-                onClick={() => setSelectedTxForDetail(null)}
-                className="absolute right-6 top-6 p-2 bg-white/20 hover:bg-white/30 rounded-full transition-colors"
-              >
-                <X size={20} />
-              </button>
-              <div className="w-20 h-20 bg-white/20 rounded-[30px] flex items-center justify-center mx-auto mb-4 shadow-inner border-2 border-white/20">
-                {selectedTxForDetail.status === 'Success' ? <CheckCircle2 size={40} /> : <AlertCircle size={40} />}
-              </div>
+              <button onClick={() => setSelectedTxForDetail(null)} className="absolute right-6 top-6 p-2 bg-white/20 hover:bg-white/30 rounded-full transition-colors"><X size={20} /></button>
+              <div className="w-20 h-20 bg-white/20 rounded-[30px] flex items-center justify-center mx-auto mb-4 shadow-inner border-2 border-white/20">{selectedTxForDetail.status === 'Success' ? <CheckCircle2 size={40} /> : <AlertCircle size={40} />}</div>
               <h3 className="text-2xl font-black uppercase tracking-tight">Receipt</h3>
-              <p className="text-white/80 text-[10px] font-black uppercase tracking-[0.3em] mt-1">
-                {selectedTxForDetail.status === 'Success' ? 'Verified OK' : 'Failed Process'}
-              </p>
+              <p className="text-white/80 text-[10px] font-black uppercase tracking-[0.3em] mt-1">{selectedTxForDetail.status === 'Success' ? 'Verified OK' : 'Failed Process'}</p>
             </div>
             
             <div className="p-8 space-y-5">
               <div className="flex justify-between items-center border-b-2 border-slate-50 dark:border-slate-700 pb-4">
-                <div className="flex items-center gap-2.5 text-slate-400">
-                  <Hash size={16} />
-                  <span className="text-[10px] font-black uppercase tracking-wider">TX ID</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-black font-mono text-slate-800 dark:text-slate-100 tracking-tighter">{selectedTxForDetail.id}</span>
-                  <button 
-                    onClick={() => {
-                        navigator.clipboard.writeText(selectedTxForDetail.id);
-                        alert('ID Copied to clipboard!');
-                    }}
-                    className="p-1.5 bg-slate-50 dark:bg-slate-900 rounded-lg text-emerald-600 shadow-sm active:scale-90 transition-transform"
-                  >
-                    <Copy size={12} />
-                  </button>
-                </div>
+                <div className="flex items-center gap-2.5 text-slate-400"><Hash size={16} /><span className="text-[10px] font-black uppercase tracking-wider">TX ID</span></div>
+                <div className="flex items-center gap-2"><span className="text-[11px] font-black font-mono text-slate-800 dark:text-slate-100 tracking-tighter">{selectedTxForDetail.id}</span><button onClick={() => alert('ID Copied!')} className="p-1.5 bg-slate-50 dark:bg-slate-900 rounded-lg text-emerald-600 shadow-sm active:scale-90"><Copy size={12} /></button></div>
               </div>
-
               <div className="flex justify-between items-center border-b-2 border-slate-50 dark:border-slate-700 pb-4">
-                <div className="flex items-center gap-2.5 text-slate-400">
-                  <Calendar size={16} />
-                  <span className="text-[10px] font-black uppercase tracking-wider">Date</span>
-                </div>
+                <div className="flex items-center gap-2.5 text-slate-400"><Calendar size={16} /><span className="text-[10px] font-black uppercase tracking-wider">Date</span></div>
                 <span className="text-[11px] font-black text-slate-800 dark:text-slate-100">{selectedTxForDetail.date}</span>
               </div>
-
-              <div className="flex justify-between items-center border-b-2 border-slate-50 dark:border-slate-700 pb-4">
-                <div className="flex items-center gap-2.5 text-slate-400">
-                  <Smartphone size={16} />
-                  <span className="text-[10px] font-black uppercase tracking-wider">Account</span>
-                </div>
-                <div className="text-right">
-                  <p className="text-[11px] font-black text-slate-800 dark:text-slate-100">{selectedTxForDetail.phoneNumber}</p>
-                  <p className="text-[9px] text-slate-500 font-bold uppercase">{selectedTxForDetail.carrier}</p>
-                </div>
-              </div>
-
-              <div className="flex justify-between items-center border-b-2 border-slate-50 dark:border-slate-700 pb-4">
-                <div className="flex items-center gap-2.5 text-slate-400">
-                  <Clock size={16} />
-                  <span className="text-[10px] font-black uppercase tracking-wider">Result</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className={`w-2 h-2 rounded-full ${selectedTxForDetail.status === 'Success' ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} />
-                  <span className={`text-[11px] font-black uppercase ${selectedTxForDetail.status === 'Success' ? 'text-emerald-600' : 'text-rose-600'}`}>
-                    {selectedTxForDetail.status}
-                  </span>
-                </div>
-              </div>
-
               <div className="flex justify-between items-center pt-2">
-                <div className="flex items-center gap-2.5 text-slate-400">
-                  <CreditCard size={16} />
-                  <span className="text-[10px] font-black uppercase tracking-wider">Grand Total</span>
-                </div>
+                <div className="flex items-center gap-2.5 text-slate-400"><CreditCard size={16} /><span className="text-[10px] font-black uppercase tracking-wider">Grand Total</span></div>
                 <span className="text-xl font-black text-slate-800 dark:text-slate-100 tracking-tight">₦{selectedTxForDetail.amount}</span>
               </div>
-
-              <button
-                onClick={() => setSelectedTxForDetail(null)}
-                className="w-full mt-4 py-4 bg-slate-900 dark:bg-slate-700 text-white rounded-[25px] font-black hover:bg-slate-800 transition-all text-xs uppercase tracking-widest shadow-xl active:scale-95"
-              >
-                Done
-              </button>
+              <button onClick={() => setSelectedTxForDetail(null)} className="w-full mt-4 py-4 bg-slate-900 text-white rounded-[25px] font-black hover:bg-slate-800 transition-all text-xs uppercase tracking-widest shadow-xl active:scale-95">Done</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Success Animation Modal */}
       {showSuccess && (
-        <div className="fixed inset-0 bg-emerald-600 z-[110] flex items-center justify-center p-6 transition-all duration-500 animate-in fade-in">
+        <div className="fixed inset-0 bg-emerald-600 z-[110] flex items-center justify-center p-6 animate-in fade-in">
           <div className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-[50px] p-10 text-center space-y-6 scale-in-center shadow-2xl border-4 border-white/20">
-            <div className="w-24 h-24 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-[40px] flex items-center justify-center mx-auto mb-2 shadow-inner transform rotate-12">
-              <CheckCircle2 size={64} className="transform -rotate-12" />
-            </div>
+            <div className="w-24 h-24 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-[40px] flex items-center justify-center mx-auto mb-2 shadow-inner transform rotate-12"><CheckCircle2 size={64} className="transform -rotate-12" /></div>
             <h3 className="text-3xl font-black text-slate-800 dark:text-white tracking-tighter">Done! No Cap! 🚀</h3>
-            <p className="text-slate-500 dark:text-slate-400 font-bold text-sm leading-relaxed">
-              Your {selectedCarrier} {productType} recharge for <strong>{phoneNumber}</strong> was successfully processed via {selectedPaymentMethod}.
-            </p>
-            <button
-              onClick={resetForm}
-              className="w-full py-5 bg-emerald-600 text-white rounded-[30px] font-black text-lg hover:bg-emerald-700 transition-all shadow-xl shadow-emerald-200 dark:shadow-none active:scale-95"
-            >
-              Finish
-            </button>
+            <p className="text-slate-500 dark:text-slate-400 font-bold text-sm leading-relaxed">Your recharge was successful. {selectedPaymentMethod === 'Wallet' ? 'Wallet balance has been updated.' : ''}</p>
+            <button onClick={resetForm} className="w-full py-5 bg-emerald-600 text-white rounded-[30px] font-black text-lg hover:bg-emerald-700 transition-all shadow-xl active:scale-95">Finish</button>
           </div>
         </div>
       )}

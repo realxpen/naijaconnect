@@ -8,6 +8,8 @@ export enum Carrier {
 
 export type ProductType = 'Airtime' | 'Data';
 
+export type Language = 'en' | 'yo' | 'ig' | 'ha' | 'fr';
+
 export interface DataPlan {
   id: string;
   name: string;

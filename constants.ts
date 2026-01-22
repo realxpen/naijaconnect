@@ -1,6 +1,6 @@
-
 import { Carrier, DataPlan, Language } from './types';
 
+// 1. CARRIER DISPLAY CONFIGURATION
 export const CARRIERS = [
   { id: Carrier.MTN, color: 'bg-yellow-400', textColor: 'text-black', logo: 'https://upload.wikimedia.org/wikipedia/commons/9/93/MTN_Logo.svg' },
   { id: Carrier.AIRTEL, color: 'bg-red-600', textColor: 'text-white', logo: 'https://upload.wikimedia.org/wikipedia/commons/0/07/Airtel_logo.svg' },
@@ -8,6 +8,15 @@ export const CARRIERS = [
   { id: Carrier.NINEMOBILE, color: 'bg-emerald-900', textColor: 'text-white', logo: 'https://upload.wikimedia.org/wikipedia/en/3/30/9mobile_logo.png' }
 ];
 
+// 2. NETWORK IDS FOR AFFTECH API (Crucial for API calls)
+export const NETWORK_IDS: Record<Carrier, string> = {
+  [Carrier.MTN]: '1',
+  [Carrier.AIRTEL]: '2',
+  [Carrier.GLO]: '3',
+  [Carrier.NINEMOBILE]: '4'
+};
+
+// 3. MOCK DATA PLANS (Fallback if API fails)
 export const MOCK_DATA_PLANS: Record<Carrier, DataPlan[]> = {
   [Carrier.MTN]: [
     { id: 'm1', name: 'Daily 100MB', price: 100, validity: '1 Day', allowance: '100MB', category: 'Daily' },
@@ -32,6 +41,7 @@ export const MOCK_DATA_PLANS: Record<Carrier, DataPlan[]> = {
   ]
 };
 
+// 4. AVAILABLE LANGUAGES
 export const LANGUAGES = [
   { id: 'en', name: 'English', flag: '🇳🇬' },
   { id: 'yo', name: 'Yoruba', flag: '🇳🇬' },
@@ -40,7 +50,8 @@ export const LANGUAGES = [
   { id: 'fr', name: 'French', flag: '🇫🇷' }
 ];
 
-export const TRANSLATIONS: Record<Language, Record<string, string>> = {
+// 5. TRANSLATIONS
+export const TRANSLATIONS: Record<Language | string, Record<string, string>> = {
   en: {
     welcome: 'Welcome Back!',
     create: 'Create Account',

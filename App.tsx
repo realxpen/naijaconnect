@@ -4,7 +4,7 @@ import {
   CheckCircle2, Loader2, X, CreditCard, User as UserIcon, Zap, Search, 
   LogOut, Repeat, Trash2, ShoppingBag, Eye, EyeOff, Wallet, Lightbulb, 
   Languages as LangIcon, RotateCcw, Building2, Hash, ExternalLink,
-  AlertCircle, Info, Lock, Mail, KeyRound, Check, UserPlus, LogIn
+  AlertCircle, Info, Lock, Mail, KeyRound, Check, RefreshCw, UserPlus, LogIn
 } from 'lucide-react';
 
 // SERVICES
@@ -27,17 +27,6 @@ const SECURITY_CONFIG = {
   REQUIRE_DIGIT: true,
   REQUIRE_SYMBOL: true
 };
-
-interface RecurringPlan {
-  id: string;
-  planId: string;
-  planName: string;
-  phoneNumber: string;
-  carrier: Carrier;
-  price: number;
-  nextRenewal: string;
-  frequency: string;
-}
 
 interface AppNotification {
   id: string;
@@ -81,26 +70,18 @@ const App: React.FC = () => {
   
   const [selectedCarrier, setSelectedCarrier] = useState<Carrier>(Carrier.MTN);
   const [productType, setProductType] = useState<ProductType>('Airtime');
-  const [selectedCategory, setSelectedCategory] = useState<string>('Monthly');
+  const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [amount, setAmount] = useState<string>('');
   const [selectedPlan, setSelectedPlan] = useState<DataPlan | null>(null);
   
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [recentNumbers, setRecentNumbers] = useState<string[]>(['08031234567', '09012345678']);
-  const [recurringPlans, setRecurringPlans] = useState<RecurringPlan[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
-  const [selectedTxForDetail, setSelectedTxForDetail] = useState<Transaction | null>(null);
   const [isConfirmingPlan, setIsConfirmingPlan] = useState(false);
-  const [isRecurringChecked, setIsRecurringChecked] = useState(false);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod>('Wallet');
   const [showLangMenu, setShowLangMenu] = useState(false);
-  const [planToCancel, setPlanToCancel] = useState<RecurringPlan | null>(null);
 
-  const [aiPlanQuery, setAiPlanQuery] = useState('');
-  const [aiPlanRecommendation, setAiPlanRecommendation] = useState<string | null>(null);
-  const [isAiPlanLoading, setIsAiPlanLoading] = useState(false);
   const [historyTypeFilter, setHistoryTypeFilter] = useState<'All' | 'Airtime' | 'Data'>('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
@@ -153,7 +134,7 @@ const App: React.FC = () => {
     await dbService.updateBalance(userEmail, newBal);
   };
 
-  // --- PURCHASE LOGIC ---
+  // --- REWRITTEN PURCHASE LOGIC ---
   const handlePurchase = async () => {
     if (!phoneNumber || phoneNumber.length < 11) { 
       addNotification('error', "Invalid phone number"); 
@@ -174,10 +155,15 @@ const App: React.FC = () => {
 
     try {
       if (productType === 'Data' && selectedPlan) {
-        const networkMap: Record<string, string> = { 'MTN': '1', 'GLO': '2', 'AIRTEL': '3', '9MOBILE': '4' };
-        const networkId = networkMap[selectedCarrier];
+        // Map Carrier String (MTN) to API ID (1)
+        let networkId = '1'; // Default MTN
+        if (selectedCarrier === Carrier.GLO) networkId = '2';
+        if (selectedCarrier === Carrier.AIRTEL) networkId = '3';
+        if (selectedCarrier === Carrier.NINEMOBILE) networkId = '4';
+        
         await buyData(networkId, phoneNumber, selectedPlan.id); 
       } else { 
+        // Simulated Airtime
         await new Promise(r => setTimeout(r, 1500)); 
       }
 
@@ -198,7 +184,7 @@ const App: React.FC = () => {
       addNotification('success', "Purchase Successful!");
 
     } catch (error: any) {
-        setWalletBalance(originalBal); 
+        setWalletBalance(originalBal); // Revert balance
         
         let errorMsg = error.message;
         if (error.message.toLowerCase().includes("insufficient") || error.message.toLowerCase().includes("balance")) {
@@ -342,22 +328,56 @@ const App: React.FC = () => {
     } catch (error: any) { addNotification('error', "Failed"); } finally { setIsProcessing(false); }
   };
 
-  // STANDARD INIT HOOKS
+  // --- FETCH PLANS LOGIC ---
   useEffect(() => { 
     const fetchPlans = async () => {
       setIsLoadingPlans(true);
       try {
         const plansFromApi = await getPlans();
-        const formattedPlans: Record<string, DataPlan[]> = { [Carrier.MTN]: [], [Carrier.AIRTEL]: [], [Carrier.GLO]: [], [Carrier.NINEMOBILE]: [] };
+        
+        if (!plansFromApi || !Array.isArray(plansFromApi)) {
+            throw new Error("Invalid Response");
+        }
+
+        const formattedPlans: Record<string, DataPlan[]> = { 
+            [Carrier.MTN]: [], 
+            [Carrier.AIRTEL]: [], 
+            [Carrier.GLO]: [], 
+            [Carrier.NINEMOBILE]: [] 
+        };
+
         plansFromApi.forEach((p: any) => {
           let carrier = Carrier.MTN;
-          if(p.network.includes("AIRTEL")) carrier = Carrier.AIRTEL;
-          if(p.network.includes("GLO")) carrier = Carrier.GLO;
-          if(p.network.includes("9MOBILE") || p.network.includes("ETISALAT")) carrier = Carrier.NINEMOBILE;
-          formattedPlans[carrier].push({ id: p.id, name: `${p.size} - ${p.plan_type}`, price: Number(p.amount), validity: p.plan_type, allowance: p.size, category: p.plan_type.includes("Month") ? "Monthly" : "Daily" });
+          const netStr = (p.network || "").toString().toUpperCase();
+          
+          if(netStr.includes("AIRTEL") || netStr === "3") carrier = Carrier.AIRTEL;
+          else if(netStr.includes("GLO") || netStr === "2") carrier = Carrier.GLO;
+          else if(netStr.includes("9MOBILE") || netStr.includes("ETISALAT") || netStr === "4") carrier = Carrier.NINEMOBILE;
+          else carrier = Carrier.MTN;
+          
+          let category = "Monthly";
+          const typeStr = (p.plan_type || "").toString().toUpperCase();
+          if (typeStr.includes("SME")) category = "SME";
+          else if (typeStr.includes("CORP")) category = "Corporate";
+          else if (typeStr.includes("GIFT")) category = "Gifting";
+
+          formattedPlans[carrier].push({ 
+              id: p.id, 
+              name: `${p.size} - ${p.plan_type}`, 
+              price: Number(p.amount), 
+              validity: p.plan_type, 
+              allowance: p.size, 
+              category: category 
+          });
         });
+
         setLivePlans(formattedPlans);
-      } catch (e) { console.log(e); } finally { setIsLoadingPlans(false); }
+      } catch (e: any) { 
+        console.error("Fetch Error:", e);
+        addNotification('error', "Could not load plans.");
+      } finally { 
+        setIsLoadingPlans(false); 
+      }
     };
     fetchPlans();
   }, []);
@@ -376,8 +396,17 @@ const App: React.FC = () => {
   const handlePhoneChange = (val: string) => { let cleaned = val.replace(/\D/g, ''); if (cleaned.startsWith('234') && cleaned.length > 3) cleaned = '0' + cleaned.slice(3); cleaned = cleaned.slice(0, 11); setPhoneNumber(cleaned); if (cleaned.length >= 4) { const prefix = cleaned.slice(0, 4); const detected = carrierPrefixes[prefix]; if (detected && detected !== selectedCarrier) { setSelectedCarrier(detected); setSelectedPlan(null); } } };
   useEffect(() => { if (isAuthenticated && !phoneNumber) handlePhoneChange(defaultPhone); }, [isAuthenticated, defaultPhone]);
 
-  const availableCategories = useMemo(() => { const plans = livePlans[selectedCarrier] || []; const categories = Array.from(new Set(plans.map(p => p.category))); return categories.length > 0 ? categories : ['Monthly']; }, [selectedCarrier, livePlans]);
-  useEffect(() => { if (!availableCategories.includes(selectedCategory as any)) { setSelectedCategory(availableCategories[0] || 'Monthly'); } }, [selectedCarrier, availableCategories]);
+  const availableCategories = useMemo(() => { 
+    const plans = livePlans[selectedCarrier] || []; 
+    const categories = Array.from(new Set(plans.map(p => p.category))); 
+    return categories.length > 0 ? ['All', ...categories] : ['All']; 
+  }, [selectedCarrier, livePlans]);
+
+  useEffect(() => { 
+    if (selectedCategory !== 'All' && !availableCategories.includes(selectedCategory)) { 
+        setSelectedCategory('All'); 
+    } 
+  }, [selectedCarrier, availableCategories]);
 
   const handleLogout = () => { setIsAuthenticated(false); setAuthView('login'); setWalletBalance(0); setTransactions([]); addNotification('info', "Signed out"); };
   const resetForm = () => { setShowSuccess(false); setAmount(''); setSelectedPlan(null); };
@@ -385,7 +414,9 @@ const App: React.FC = () => {
   const handleAiMessage = async (overrideInput?: string) => { const textToSend = overrideInput || userInput; if (!textToSend.trim()) return; setChatHistory(prev => [...prev, { role: 'user', text: textToSend }]); setUserInput(''); setIsAiLoading(true); try { const response = await getGeminiRecommendation(textToSend, language); setChatHistory(prev => [...prev, { role: 'model', text: response }]); } catch (err) { setChatHistory(prev => [...prev, { role: 'model', text: "Error." }]); } finally { setIsAiLoading(false); } };
   
   const filteredTransactions = useMemo(() => { return transactions.filter(tx => { if (historyTypeFilter !== 'All' && tx.type !== historyTypeFilter) return false; return !searchQuery || tx.phoneNumber.includes(searchQuery); }); }, [transactions, historyTypeFilter, searchQuery]);
-  const filteredPlans = (livePlans[selectedCarrier] || []).filter(plan => plan.category === selectedCategory);
+  
+  const filteredPlans = (livePlans[selectedCarrier] || []).filter(plan => selectedCategory === 'All' ? true : plan.category === selectedCategory);
+  
   const openPlanConfirmation = (plan: DataPlan) => { setSelectedPlan(plan); setIsConfirmingPlan(true); };
   const openAirtimeConfirmation = () => { if (Number(amount) >= 50) setIsConfirmingPlan(true); };
 
@@ -563,21 +594,32 @@ const App: React.FC = () => {
                   <input type="number" value={amount} onChange={e => setAmount(e.target.value)} className="w-full p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl font-black dark:text-white outline-none text-base" placeholder="Custom Amount" />
                 </div>
               ) : (
-                <div className="space-y-2 max-h-[350px] overflow-y-auto pr-1 custom-scrollbar">
-                  {isLoadingPlans ? <div className="text-center py-8"><Loader2 className="animate-spin mx-auto text-emerald-600 mb-2"/><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Loading {selectedCarrier} Plans</p></div> : 
-                   filteredPlans.length === 0 ? <div className="text-center py-8 bg-slate-50 dark:bg-slate-900 rounded-3xl"><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest italic">No plans available</p></div> :
-                   filteredPlans.map(plan => (
-                    <button key={plan.id} onClick={() => openPlanConfirmation(plan)} className="w-full p-4 flex justify-between items-center bg-slate-50 dark:bg-slate-900 rounded-2xl border-2 border-transparent hover:border-emerald-500 transition-all group active:scale-95">
-                      <div className="text-left">
-                        <p className="font-black text-sm dark:text-white group-hover:text-emerald-600 transition-colors">{plan.name}</p>
-                        <p className="text-[9px] text-slate-400 uppercase font-black tracking-widest">{plan.validity} • {plan.allowance}</p>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <span className="font-black text-emerald-600 text-sm">₦{plan.price}</span>
-                        <ArrowRight size={16} className="text-slate-300 group-hover:translate-x-1 transition-transform"/>
-                      </div>
-                    </button>
-                  ))}
+                <div className="space-y-4">
+                    {/* PLAN CATEGORY TABS */}
+                    <div className="flex gap-2 overflow-x-auto pb-1 custom-scrollbar">
+                        {availableCategories.map(cat => (
+                            <button key={cat} onClick={() => setSelectedCategory(cat)} className={`flex-shrink-0 px-4 py-2 rounded-full text-[10px] font-black uppercase transition-all whitespace-nowrap ${selectedCategory === cat ? 'bg-emerald-600 text-white shadow-md' : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300'}`}>
+                                {cat}
+                            </button>
+                        ))}
+                    </div>
+
+                    <div className="space-y-2 max-h-[350px] overflow-y-auto pr-1 custom-scrollbar">
+                      {isLoadingPlans ? <div className="text-center py-8"><Loader2 className="animate-spin mx-auto text-emerald-600 mb-2"/><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Loading Plans...</p></div> : 
+                      filteredPlans.length === 0 ? <div className="text-center py-8 bg-slate-50 dark:bg-slate-900 rounded-3xl border-2 border-dashed border-slate-200"><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest italic">No {selectedCategory} plans found</p></div> :
+                      filteredPlans.map(plan => (
+                        <button key={plan.id} onClick={() => openPlanConfirmation(plan)} className="w-full p-4 flex justify-between items-center bg-slate-50 dark:bg-slate-900 rounded-2xl border-2 border-transparent hover:border-emerald-500 transition-all group active:scale-95">
+                          <div className="text-left">
+                            <p className="font-black text-sm dark:text-white group-hover:text-emerald-600 transition-colors">{plan.name}</p>
+                            <p className="text-[9px] text-slate-400 uppercase font-black tracking-widest">{plan.category} • {plan.validity}</p>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className="font-black text-emerald-600 text-sm">₦{plan.price}</span>
+                            <ArrowRight size={16} className="text-slate-300 group-hover:translate-x-1 transition-transform"/>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
                 </div>
               )}
             </section>
@@ -647,7 +689,6 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {/* PROFILE TAB */}
         {activeTab === 'profile' && (
           <div className="space-y-6 text-center py-6 animate-in fade-in duration-500">
              <div className="w-32 h-32 bg-emerald-600 rounded-[45px] mx-auto flex items-center justify-center text-5xl text-white font-black mb-4 shadow-xl shadow-emerald-100 dark:shadow-none border-4 border-white/20 uppercase">{userName.charAt(0)}</div>
@@ -734,9 +775,9 @@ const App: React.FC = () => {
           <div className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-[45px] p-8 shadow-2xl border-2 border-white/10">
              <div className="flex justify-between items-center mb-8"><h3 className="text-xl font-black dark:text-white uppercase tracking-tight">Withdraw</h3><button onClick={() => setIsWithdrawing(false)} className="p-2 bg-slate-50 dark:bg-slate-900 rounded-full text-slate-400"><X size={18}/></button></div>
              <div className="space-y-5">
-               <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Amount</label><input type="number" placeholder="₦" value={withdrawAmount} onChange={e => setWithdrawAmount(e.target.value)} className="w-full p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl font-black dark:text-white outline-none shadow-inner" /></div>
-               <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Bank Code</label><div className="relative"><Building2 className="absolute left-3 top-4 text-slate-400" size={16} /><input type="text" placeholder="057 (Zenith)" value={withdrawBank} onChange={e => setWithdrawBank(e.target.value)} className="w-full pl-10 p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl font-black dark:text-white outline-none shadow-inner" /></div></div>
-               <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Account Number</label><div className="relative"><Hash className="absolute left-3 top-4 text-slate-400" size={16} /><input type="text" maxLength={10} placeholder="0000000000" value={withdrawAccount} onChange={e => setWithdrawAccount(e.target.value)} className="w-full pl-10 p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl font-black dark:text-white outline-none shadow-inner" /></div></div>
+                <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Amount</label><input type="number" placeholder="₦" value={withdrawAmount} onChange={e => setWithdrawAmount(e.target.value)} className="w-full p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl font-black dark:text-white outline-none shadow-inner" /></div>
+                <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Bank Code</label><div className="relative"><Building2 className="absolute left-3 top-4 text-slate-400" size={16} /><input type="text" placeholder="057 (Zenith)" value={withdrawBank} onChange={e => setWithdrawBank(e.target.value)} className="w-full pl-10 p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl font-black dark:text-white outline-none shadow-inner" /></div></div>
+                <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Account Number</label><div className="relative"><Hash className="absolute left-3 top-4 text-slate-400" size={16} /><input type="text" maxLength={10} placeholder="0000000000" value={withdrawAccount} onChange={e => setWithdrawAccount(e.target.value)} className="w-full pl-10 p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl font-black dark:text-white outline-none shadow-inner" /></div></div>
              </div>
              <button onClick={handleWithdrawSubmit} disabled={isProcessing} className="w-full mt-10 py-5 bg-emerald-600 text-white rounded-[25px] font-black uppercase shadow-xl flex justify-center tracking-tighter active:scale-95 transition-all">{isProcessing ? <Loader2 className="animate-spin"/> : "Withdraw Funds"}</button>
           </div>

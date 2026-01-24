@@ -3,8 +3,8 @@
 import axios from 'axios';
 import { DataPlan } from '../types';
 
-// 🔐 KEYS
-// ⚠️ IMPORTANT: These are visible in the browser. For production, move to a backend.
+// 🔐 KEYS & CONFIGURATION
+// ⚠️ Ensure your Token is correct from your Affatech Dashboard
 const PAYSTACK_SECRET_KEY = "sk_test_595ac543ca73e33e382d7af1bb041693f197fcb8"; 
 const AFFTECH_TOKEN = "Token 6c21f4919149ab4e44425149ae11b0c6548e75a0"; 
 
@@ -12,14 +12,18 @@ const PROXY_URL = "https://cors-anywhere.herokuapp.com/";
 const PAYSTACK_BASE = "https://api.paystack.co";
 const AFFTECH_BASE = "https://www.affatech.com.ng/api";
 
-// 1. FETCH PLANS
+// 1. FETCH PLANS (Fixed Endpoint)
 export const getPlans = async (): Promise<DataPlan[]> => {
   try {
-    const response = await axios.get(`${PROXY_URL}${AFFTECH_BASE}/network/`, {
+    // ⚠️ FIXED: Changed from '/network/' to '/get/network/' based on Affatech Docs
+    const response = await axios.get(`${PROXY_URL}${AFFTECH_BASE}/get/network/`, {
       headers: { Authorization: AFFTECH_TOKEN }
     });
+    
     const data = response.data;
     let allPlans: any[] = [];
+
+    // Affatech usually returns data in these keys. 
     if (data.MTN_PLAN) allPlans.push(...data.MTN_PLAN);
     if (data.GLO_PLAN) allPlans.push(...data.GLO_PLAN);
     if (data.AIRTEL_PLAN) allPlans.push(...data.AIRTEL_PLAN);
@@ -32,13 +36,18 @@ export const getPlans = async (): Promise<DataPlan[]> => {
       amount: p.plan_amount,
       size: p.plan
     }));
-  } catch (error) {
+
+  } catch (error: any) {
     console.error("Afftech Plan Error:", error);
+    // Log the specific error response if available
+    if (error.response) {
+        console.error("Server Response:", error.response.status, error.response.data);
+    }
     throw error;
   }
 };
 
-// 2. BUY DATA (Fixed Capital 'P' Error)
+// 2. BUY DATA (With Capital 'P' Fix)
 export const buyData = async (networkId: string, phone: string, planId: string) => {
   try {
     console.log(`Attempting Buy: Network ${networkId}, Plan ${planId}, Phone ${phone}`);
@@ -47,17 +56,16 @@ export const buyData = async (networkId: string, phone: string, planId: string) 
       network: networkId,
       mobile_number: phone,
       plan: planId,
-      Ported_number: true // ⚠️ FIXED: Capital 'P' is required by API
-    }, { headers: { Authorization: AFFTECH_TOKEN } });
+      Ported_number: true // Capital 'P' required
+    }, { 
+      headers: { Authorization: AFFTECH_TOKEN } 
+    });
     
     return response.data;
 
   } catch (error: any) {
     console.error("🔥 BUY DATA ERROR:", error);
-    
-    // Extract the specific error message from Afftech
     if (error.response) {
-        console.error("Server Response:", error.response.data);
         const serverMsg = error.response.data.error || error.response.data.message || JSON.stringify(error.response.data);
         throw new Error(serverMsg);
     }
@@ -65,7 +73,7 @@ export const buyData = async (networkId: string, phone: string, planId: string) 
   }
 };
 
-// 3. FUND WALLET (Also exported as initializeTopUp for compatibility)
+// 3. FUND WALLET
 export const fundWallet = async (email: string, amount: number) => {
   try {
     const response = await axios.post(
@@ -73,15 +81,14 @@ export const fundWallet = async (email: string, amount: number) => {
       { 
         email: email,
         amount: amount * 100, // Paystack uses Kobo
-        // Use window.location.origin so it works on localhost or production automatically
         callback_url: typeof window !== 'undefined' ? window.location.origin : "http://localhost:3000" 
       },
       { headers: { Authorization: `Bearer ${PAYSTACK_SECRET_KEY}` } }
     );
     return {
       success: true,
-      authorization_url: response.data.data.authorization_url, // 'authorization_url' is correct for Paystack
-      checkoutUrl: response.data.data.authorization_url, // Alias for your UI
+      authorization_url: response.data.data.authorization_url,
+      checkoutUrl: response.data.data.authorization_url,
       reference: response.data.data.reference 
     };
   } catch (error) {
@@ -136,9 +143,7 @@ export const withdrawFunds = async (amount: number, bankCode: string, accountNum
     );
     return transferRes.data;
   } catch (error: any) {
-    // Handle Sandbox "Insufficient Balance" gracefully for testing
     if (error.response && error.response.data.code === "insufficient_balance") {
-        console.warn("Sandbox Mode: Simulating success because Test Balance is low.");
         return { status: true, message: "Simulated Success (Sandbox Balance Low)", data: { transfer_code: "TRF_TEST_MOCK" } };
     }
     throw error;

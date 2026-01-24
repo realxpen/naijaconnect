@@ -4,7 +4,7 @@ import {
   CheckCircle2, Loader2, X, CreditCard, User as UserIcon, Zap, Search, 
   LogOut, Repeat, Trash2, ShoppingBag, Eye, EyeOff, Wallet, Lightbulb, 
   Languages as LangIcon, RotateCcw, Building2, Hash, ExternalLink,
-  AlertCircle, Info, Lock, Mail, KeyRound, Check
+  AlertCircle, Info, Lock, Mail, KeyRound, Check, UserPlus, LogIn
 } from 'lucide-react';
 
 // SERVICES
@@ -153,7 +153,7 @@ const App: React.FC = () => {
     await dbService.updateBalance(userEmail, newBal);
   };
 
-  // --- REWRITTEN PURCHASE LOGIC ---
+  // --- PURCHASE LOGIC ---
   const handlePurchase = async () => {
     if (!phoneNumber || phoneNumber.length < 11) { 
       addNotification('error', "Invalid phone number"); 
@@ -168,7 +168,6 @@ const App: React.FC = () => {
     }
 
     setIsProcessing(true);
-    // Optimistic UI: Store original and deduct temporarily
     const originalBal = walletBalance;
     const newBal = walletBalance - cost;
     setWalletBalance(newBal); 
@@ -177,15 +176,11 @@ const App: React.FC = () => {
       if (productType === 'Data' && selectedPlan) {
         const networkMap: Record<string, string> = { 'MTN': '1', 'GLO': '2', 'AIRTEL': '3', '9MOBILE': '4' };
         const networkId = networkMap[selectedCarrier];
-        
-        // This calls the verify logic in paymentService.ts
         await buyData(networkId, phoneNumber, selectedPlan.id); 
       } else { 
-        // Simulated Airtime top-up delay
         await new Promise(r => setTimeout(r, 1500)); 
       }
 
-      // API Succeeds: Save to DB
       await dbService.updateBalance(userEmail, newBal);
       await dbService.addTransaction({
         user_email: userEmail,
@@ -203,10 +198,8 @@ const App: React.FC = () => {
       addNotification('success', "Purchase Successful!");
 
     } catch (error: any) {
-        // 🚨 FAILURE HANDLING: Revert balance instantly
         setWalletBalance(originalBal); 
         
-        // Extract real error from Afftech response
         let errorMsg = error.message;
         if (error.message.toLowerCase().includes("insufficient") || error.message.toLowerCase().includes("balance")) {
           errorMsg = "Service temporarily unavailable (Merchant balance low)";
@@ -214,7 +207,6 @@ const App: React.FC = () => {
 
         addNotification('error', errorMsg);
         
-        // Record as Failed in history
         await dbService.addTransaction({
           user_email: userEmail,
           type: productType,
@@ -391,7 +383,7 @@ const App: React.FC = () => {
   const resetForm = () => { setShowSuccess(false); setAmount(''); setSelectedPlan(null); };
 
   const handleAiMessage = async (overrideInput?: string) => { const textToSend = overrideInput || userInput; if (!textToSend.trim()) return; setChatHistory(prev => [...prev, { role: 'user', text: textToSend }]); setUserInput(''); setIsAiLoading(true); try { const response = await getGeminiRecommendation(textToSend, language); setChatHistory(prev => [...prev, { role: 'model', text: response }]); } catch (err) { setChatHistory(prev => [...prev, { role: 'model', text: "Error." }]); } finally { setIsAiLoading(false); } };
-  const handleAiPlanSearch = async () => { if (!aiPlanQuery.trim()) return; setIsAiPlanLoading(true); setAiPlanRecommendation(null); try { const recommendation = await getGeminiRecommendation(`Recommend for: ${aiPlanQuery}`, language); setAiPlanRecommendation(recommendation); } catch (e) { setAiPlanRecommendation("Error."); } finally { setIsAiPlanLoading(false); } };
+  
   const filteredTransactions = useMemo(() => { return transactions.filter(tx => { if (historyTypeFilter !== 'All' && tx.type !== historyTypeFilter) return false; return !searchQuery || tx.phoneNumber.includes(searchQuery); }); }, [transactions, historyTypeFilter, searchQuery]);
   const filteredPlans = (livePlans[selectedCarrier] || []).filter(plan => plan.category === selectedCategory);
   const openPlanConfirmation = (plan: DataPlan) => { setSelectedPlan(plan); setIsConfirmingPlan(true); };
@@ -413,25 +405,34 @@ const App: React.FC = () => {
 
         <div className="flex-1 flex flex-col justify-center space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
           <div className="text-center">
-            <div className="bg-emerald-600 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-2 shadow-lg"><Zap className="w-10 h-10 text-yellow-400 fill-yellow-400"/></div>
-            <h2 className="text-3xl font-black dark:text-white">
+            <div className="bg-emerald-600 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg"><Zap className="w-10 h-10 text-yellow-400 fill-yellow-400"/></div>
+            <h2 className="text-3xl font-black dark:text-white tracking-tight">
               {authView === 'login' ? t('welcome') : authView === 'signup' ? t('create') : 'Security Check'}
             </h2>
+            <p className="text-slate-400 text-sm font-bold uppercase tracking-wider mt-1">
+              {authView === 'login' ? 'Sign in to continue' : authView === 'signup' ? 'Join NaijaConnect Today' : 'Verify your identity'}
+            </p>
           </div>
 
           {(authView === 'login' || authView === 'signup') && (
             <form onSubmit={handleAuth} className="space-y-4">
-              {authView === 'signup' && <input type="text" required placeholder="Full Name" value={userName} onChange={e => setUserName(e.target.value)} className="w-full p-4 rounded-xl border dark:bg-slate-950 dark:text-white font-bold outline-none focus:ring-2 focus:ring-emerald-500" />}
+              {authView === 'signup' && (
+                  <div className="relative animate-in slide-in-from-top-2">
+                    <UserIcon className="absolute left-3 top-4 text-slate-400" size={18} />
+                    <input type="text" required placeholder="Full Name" value={userName} onChange={e => setUserName(e.target.value)} className="w-full pl-10 p-4 rounded-xl border dark:bg-slate-950 dark:text-white font-bold outline-none focus:ring-2 focus:ring-emerald-500 transition-all" />
+                  </div>
+              )}
               <div className="relative">
                 <Mail className="absolute left-3 top-4 text-slate-400" size={18} />
-                <input type="email" required placeholder="Email Address" value={userEmail} onChange={e => setUserEmail(e.target.value)} className="w-full pl-10 p-4 rounded-xl border dark:bg-slate-950 dark:text-white font-bold outline-none focus:ring-2 focus:ring-emerald-500" />
+                <input type="email" required placeholder="Email Address" value={userEmail} onChange={e => setUserEmail(e.target.value)} className="w-full pl-10 p-4 rounded-xl border dark:bg-slate-950 dark:text-white font-bold outline-none focus:ring-2 focus:ring-emerald-500 transition-all" />
               </div>
               <div className="relative">
                 <Lock className="absolute left-3 top-4 text-slate-400" size={18} />
-                <input type="password" required placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} className="w-full pl-10 p-4 rounded-xl border dark:bg-slate-950 dark:text-white font-bold outline-none focus:ring-2 focus:ring-emerald-500" />
+                <input type="password" required placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} className="w-full pl-10 p-4 rounded-xl border dark:bg-slate-950 dark:text-white font-bold outline-none focus:ring-2 focus:ring-emerald-500 transition-all" />
               </div>
-              <button type="submit" disabled={isProcessing} className="w-full py-4 bg-emerald-600 text-white rounded-2xl font-black shadow-lg uppercase tracking-tight flex justify-center items-center gap-2">
-                {isProcessing ? <Loader2 className="animate-spin" /> : (authView === 'login' ? t('signin') : t('signup'))}
+              
+              <button type="submit" disabled={isProcessing} className="w-full py-4 bg-emerald-600 text-white rounded-2xl font-black shadow-lg uppercase tracking-tight flex justify-center items-center gap-2 hover:bg-emerald-700 active:scale-95 transition-all">
+                {isProcessing ? <Loader2 className="animate-spin" /> : (authView === 'login' ? <><LogIn size={18} /> {t('signin')}</> : <><UserPlus size={18} /> {t('signup')}</>)}
               </button>
             </form>
           )}
@@ -460,10 +461,26 @@ const App: React.FC = () => {
             </form>
           )}
 
-          <div className="text-center">
-            {authView === 'login' ? (
-              <button onClick={() => setAuthView('forgot-password')} className="text-xs font-black text-slate-400 hover:text-emerald-600 uppercase tracking-widest">Forgot Password?</button>
-            ) : (
+          {/* TOGGLE BETWEEN LOGIN AND SIGNUP */}
+          <div className="text-center space-y-4">
+            {authView === 'login' && (
+                <>
+                  <button onClick={() => setAuthView('forgot-password')} className="text-xs font-black text-slate-400 hover:text-emerald-600 uppercase tracking-widest">Forgot Password?</button>
+                  <div className="border-t dark:border-slate-800 pt-6 mt-2">
+                    <p className="text-sm font-bold text-slate-500 mb-2">Don't have an account?</p>
+                    <button onClick={() => setAuthView('signup')} className="text-emerald-600 font-black uppercase tracking-wider text-sm hover:underline">Create Account</button>
+                  </div>
+                </>
+            )}
+
+            {authView === 'signup' && (
+                <div className="border-t dark:border-slate-800 pt-6 mt-2">
+                    <p className="text-sm font-bold text-slate-500 mb-2">Already have an account?</p>
+                    <button onClick={() => setAuthView('login')} className="text-emerald-600 font-black uppercase tracking-wider text-sm hover:underline">Log In Here</button>
+                </div>
+            )}
+            
+            {(authView === 'forgot-password' || authView === 'verify-otp' || authView === 'reset-password') && (
               <button onClick={() => setAuthView('login')} className="text-xs font-black text-slate-400 hover:text-emerald-600 uppercase tracking-widest">Back to Login</button>
             )}
           </div>
@@ -717,9 +734,9 @@ const App: React.FC = () => {
           <div className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-[45px] p-8 shadow-2xl border-2 border-white/10">
              <div className="flex justify-between items-center mb-8"><h3 className="text-xl font-black dark:text-white uppercase tracking-tight">Withdraw</h3><button onClick={() => setIsWithdrawing(false)} className="p-2 bg-slate-50 dark:bg-slate-900 rounded-full text-slate-400"><X size={18}/></button></div>
              <div className="space-y-5">
-                <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Amount</label><input type="number" placeholder="₦" value={withdrawAmount} onChange={e => setWithdrawAmount(e.target.value)} className="w-full p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl font-black dark:text-white outline-none shadow-inner" /></div>
-                <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Bank Code</label><div className="relative"><Building2 className="absolute left-3 top-4 text-slate-400" size={16} /><input type="text" placeholder="057 (Zenith)" value={withdrawBank} onChange={e => setWithdrawBank(e.target.value)} className="w-full pl-10 p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl font-black dark:text-white outline-none shadow-inner" /></div></div>
-                <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Account Number</label><div className="relative"><Hash className="absolute left-3 top-4 text-slate-400" size={16} /><input type="text" maxLength={10} placeholder="0000000000" value={withdrawAccount} onChange={e => setWithdrawAccount(e.target.value)} className="w-full pl-10 p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl font-black dark:text-white outline-none shadow-inner" /></div></div>
+               <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Amount</label><input type="number" placeholder="₦" value={withdrawAmount} onChange={e => setWithdrawAmount(e.target.value)} className="w-full p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl font-black dark:text-white outline-none shadow-inner" /></div>
+               <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Bank Code</label><div className="relative"><Building2 className="absolute left-3 top-4 text-slate-400" size={16} /><input type="text" placeholder="057 (Zenith)" value={withdrawBank} onChange={e => setWithdrawBank(e.target.value)} className="w-full pl-10 p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl font-black dark:text-white outline-none shadow-inner" /></div></div>
+               <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Account Number</label><div className="relative"><Hash className="absolute left-3 top-4 text-slate-400" size={16} /><input type="text" maxLength={10} placeholder="0000000000" value={withdrawAccount} onChange={e => setWithdrawAccount(e.target.value)} className="w-full pl-10 p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl font-black dark:text-white outline-none shadow-inner" /></div></div>
              </div>
              <button onClick={handleWithdrawSubmit} disabled={isProcessing} className="w-full mt-10 py-5 bg-emerald-600 text-white rounded-[25px] font-black uppercase shadow-xl flex justify-center tracking-tighter active:scale-95 transition-all">{isProcessing ? <Loader2 className="animate-spin"/> : "Withdraw Funds"}</button>
           </div>
